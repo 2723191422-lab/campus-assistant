@@ -417,3 +417,21 @@
 - 学生提交 git check-ignore 与 git status；老师独立只读核对：learning.db 命中 *.db、.venv/ 命中 .venv/、learning.db-wal 路径命中 *.db-*。暂存区差异为空，数据库与虚拟环境未出现在未跟踪文件列表。
 - 当前未跟踪文件还包括 .vscode、delete_test.py、id_practice.py、学习进度与教学方法总结.md 与练习目录，保留原文件，尚未纳入本次待提交范围；用户输出中的中文路径转义只是 Git 的显示形式。
 - 下一小步：由学生明确暂存 .gitignore、main.py、database.py、requirements.txt、README.md、LEARNING_LOG.md 六个文件，再检查暂存摘要及状态；首次提交与 GitHub 网页建仓/推送均尚未完成。
+
+
+## 2026-10-13 · 首次 GitHub 推送验收
+
+- 学生完成本地首次提交 640652a（实现 SQLite 资料管理与状态筛选），六个文件、611行；之后另有 538f8fa（first commit），只向 README 追加一行仓库标题。老师实际 git log / show 核对两条历史；重复的末尾标题已在本轮文档维护中清理，历史提交未改写。
+- 学生通过网页创建 campus-assistant，并配置 origin。老师在推送前实际 git ls-remote 确认仓库当时为空，检查待上传提交文件清单。
+- 认证排错：学生提交的地址被聊天显示为 Markdown 链接，老师一度误判地址错误，随后直接读取 git remote -v 确认配置正确并更正判断。GitHub CLI 已安装但当时未登录；学生要求使用手动认证流程，老师说明细粒度访问令牌和 HTTPS 推送，不记录或接收令牌值。
+- 学生提交推送成功输出：main -> main，已跟踪 origin/main。老师独立只读核对：本地 HEAD、origin/main 与远程 refs/heads/main 均为 538f8fa6f4497b421234095f7c0c18ef632e0568。
+- 该提交树包含 .gitignore、LEARNING_LOG.md、README.md、database.py、main.py、requirements.txt；没有数据库、虚拟环境或其他未跟踪练习文件。用户创建的公开仓库为 https://github.com/2723191422-lab/campus-assistant。首次同步验收通过，不等同于部署或完整功能测试。
+- 小阶段知识：忽略规则、暂存区、本地提交、远程仓库、push 与分支跟踪；已实现的资料功能及验证边界仍按对应条目记录。
+- 下一小步：学生按已选定的默认 MIT 方案在项目根目录创建 LICENSE；老师检查后，再由学生将许可证与本轮 README/LEARNING_LOG 同步记录一并提交和推送。本轮文档更新尚未提交。
+
+
+## 2026-10-13 · MIT 许可证文件检查通过
+
+- 学生在根目录创建 LICENSE，复制 MIT 标准文本并填写 2026 / Rock；首次填写保留了模板方括号，学生已去掉，当前版权行为 Copyright (c) 2026 Rock。
+- 老师读取完整本地文件，确认许可正文齐全、占位符已替换，没有重复许可证文件；README 已更新许可证说明。本项是本地文本检查，不是 GitHub 许可证识别或推送验收。
+- 当前本轮待提交范围为 LICENSE、README.md、LEARNING_LOG.md 三个文件；核心代码、数据库及原有提交未改动。下一小步：由学生明确暂存这三个文件，提交并手动推送，再核对远程最新提交与 LICENSE。

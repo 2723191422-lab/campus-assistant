@@ -14,7 +14,12 @@
 - 空标题校验：学生提交 422 响应，老师只读确认数据库未增加记录。SQLite 版非法状态检查仍待验证。
 - 重启保留：学生提交重启后 id=1、2、3 的列表，与之前基线一致；老师未独立执行重启。
 - GET /health：学生已将 status 修正为 ok，老师实际 HTTP 验证返回 200 与约定内容。
-- 状态更新输入模型已通过合法/非法值的独立构造检查，模块级更新测试已清理。get_resources(status=None) 的默认查询、按状态筛选、无匹配返回空列表与连接关闭已通过真实数据库只读函数检查；GET /resources 已接入可选 status 查询参数，老师实际验证默认查询、reading 和 completed 筛选均为 HTTP 200；学生修正拼写后，comleted 被 HTTP 422 拒绝。get_resources 已合并公共转换、关闭和返回逻辑，默认查询与筛选经只读函数执行确认保持正常；模块级测试打印已删除。本地 Git 已由学生初始化；老师实际核对 learning.db、.venv/ 与 SQLite 辅助文件被忽略。当前尚无提交，暂存区为空，GitHub 同步尚未完成。下一小步：将主程序、数据库模块、依赖清单、忽略规则和两份项目文档放入暂存区并核对。任务、成长记录、网页、课程课表与 AI 尚未实现。
+- 状态更新输入模型已通过合法/非法值的独立构造检查，模块级测试调用已清理。
+- 状态筛选：GET /resources 接收可选 status 查询参数。老师实际 HTTP 验证默认查询、reading、completed 均为 200，拼错的 comleted 返回 422；数据库函数的无匹配空列表与连接关闭检查通过。
+- 查询代码整理：get_resources 共用字典列表转换、关闭连接与返回逻辑；老师只读执行确认默认查询和筛选保持正常。
+- Git/GitHub：本地 main 已首次推送到 https://github.com/2723191422-lab/campus-assistant；老师在首次同步验收时独立核对远程 main 为 538f8fa，与当时本地 HEAD 一致。仓库中的六个文件为代码、依赖、忽略规则与项目文档，数据库及虚拟环境未上传。
+- 许可证：MIT，完整文本见 [LICENSE](LICENSE)。学生填写年份与公开署名，老师读取完整文件确认正文与标准文本一致。
+- 任务、成长记录、网页、课程课表与 AI 尚未实现。
 
 详细历史、贡献来源、排错和验证证据见 LEARNING_LOG.md；代码已存在不等同于学生已经独立掌握。
 
@@ -58,4 +63,3 @@ python -m uvicorn main:app --reload
 
 架构和工程实践参考：https://github.com/fastapi/full-stack-fastapi-template。
 目前未复制该模板的项目代码。老师准备环境、文档和第一课接口骨架；学生完成部分及验证证据记录在 LEARNING_LOG.md。
-# campus-assistant
