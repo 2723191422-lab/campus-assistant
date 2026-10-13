@@ -58,3 +58,4 @@ python -m uvicorn main:app --reload
 
 架构和工程实践参考：https://github.com/fastapi/full-stack-fastapi-template。
 目前未复制该模板的项目代码。老师准备环境、文档和第一课接口骨架；学生完成部分及验证证据记录在 LEARNING_LOG.md。
+# campus-assistant
