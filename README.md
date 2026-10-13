@@ -17,9 +17,11 @@
 - 状态更新输入模型已通过合法/非法值的独立构造检查，模块级测试调用已清理。
 - 状态筛选：GET /resources 接收可选 status 查询参数。老师实际 HTTP 验证默认查询、reading、completed 均为 200，拼错的 comleted 返回 422；数据库函数的无匹配空列表与连接关闭检查通过。
 - 查询代码整理：get_resources 共用字典列表转换、关闭连接与返回逻辑；老师只读执行确认默认查询和筛选保持正常。
-- Git/GitHub：本地 main 已首次推送到 https://github.com/2723191422-lab/campus-assistant；老师在首次同步验收时独立核对远程 main 为 538f8fa，与当时本地 HEAD 一致。仓库中的六个文件为代码、依赖、忽略规则与项目文档，数据库及虚拟环境未上传。
-- 许可证：MIT，完整文本见 [LICENSE](LICENSE)。学生填写年份与公开署名，老师读取完整文件确认正文与标准文本一致。
-- 任务、成长记录、网页、课程课表与 AI 尚未实现。
+- Git/GitHub：公开仓库为 https://github.com/2723191422-lab/campus-assistant；许可证与文档提交 ccc4a67 已同步，老师实际核对本地 HEAD、origin/main 和远程 main 一致。发布内容为代码、依赖、忽略规则、MIT 许可证与项目文档；数据库及虚拟环境未上传。
+- 许可证：MIT，完整文本见 [LICENSE](LICENSE)。学生填写年份与公开署名，老师读取完整文件确认标准文本，并通过 GitHub 仓库 API 确认许可证识别为 MIT。
+- 网页基础：学生亲手实现 index.html 的文档骨架、UTF-8 声明、标签页标题、一级/二级标题、段落和书籍列表。老师读取代码确认结构正确；学生明确确认大标题与标签页标题的浏览器显示，段落和列表的显示尚未单独确认。当前书籍列表为手写内容，尚未连接数据库；学生已添加通往资料接口的链接；GET / 已通过 FileResponse 返回该网页，老师实际 HTTP 验证为 200 与 text/html; charset=utf-8；下一小步暂存本阶段代码与文档。任务、成长记录、课程课表与 AI 尚未实现；CSS 与 JavaScript 随实际需求学习。
+
+- 接口中文显示：学生报告浏览器打开资料链接后中文乱码；老师确认数据库与 HTTP 原文均为正确中文。学生为资料列表及健康检查使用 JSONResponse 添加 UTF-8 提示；老师实际核对两接口均为 HTTP 200、Content-Type 为 application/json;charset=utf-8。浏览器乱码是否消失仍待学生明确确认。
 
 详细历史、贡献来源、排错和验证证据见 LEARNING_LOG.md；代码已存在不等同于学生已经独立掌握。
 
@@ -37,6 +39,8 @@ python -m uvicorn main:app --reload
 ```json
 {"status": "ok", "message": "学习系统已启动"}
 ```
+
+网页首页：http://127.0.0.1:8000/。首页使用相对路径读取 index.html，请在本项目目录启动。
 
 交互文档：http://127.0.0.1:8000/docs。停止服务：Ctrl+C。
 
