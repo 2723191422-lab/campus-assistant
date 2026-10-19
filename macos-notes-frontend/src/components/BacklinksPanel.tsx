@@ -38,8 +38,8 @@ export function BacklinksPanel({ noteId }: { noteId?: string }) {
     <div className={styles.backlinkHeader}><span>文档关联</span><Link2 size={16} /></div>
     {!noteId ? <p className={styles.panelHint}>打开一篇笔记，查看它与其他想法的联系。</p> : loading ? <p className={styles.panelHint}>正在寻找连接…</p> : error ? <p className={styles.panelHint} role="alert">{error}</p> : <>
       <button className={styles.backlinkSection} onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed}><span><ChevronDown size={14} style={{ transform: collapsed ? 'rotate(-90deg)' : undefined }} />反向链接</span><b>{links.length}</b></button>
-      <div hidden={collapsed}>{links.map(link => <Link className={styles.backlinkCard} key={link.noteId} to={`/notes/${link.noteId}`}><div><strong>{link.title}</strong><ArrowUpRight size={14} /></div><p>{link.excerpt}</p><small>{link.notebook}</small></Link>)}{!links.length && <p className={styles.panelHint}>还没有其他笔记链接到这里。</p>}</div>
-      <div className={styles.graphHeading}><Network size={14} /><span>局部关系图</span><small>MOCK</small></div>
+      <div hidden={collapsed}>{links.map(link => <Link className={styles.backlinkCard} key={link.noteId} to={`/notes/${link.noteId}`}><div><strong>{link.title}</strong><ArrowUpRight size={14} /></div><p>{link.excerpt}</p><small>{link.notebook}</small></Link>)}{!links.length && <p className={styles.panelHint}>反链分析尚未接入，当前仅显示笔记本身。</p>}</div>
+      <div className={styles.graphHeading}><Network size={14} /><span>局部关系图</span><small>待接入</small></div>
       {graph && <RelationshipGraph graph={graph} current={noteId} />}
       <p className={styles.graphHint}>点击节点，继续探索一个想法。</p>
       <div className={styles.connectionNote}><Link2 size={17} /><p>每一次连接，<br />都是一次新的理解。</p></div>

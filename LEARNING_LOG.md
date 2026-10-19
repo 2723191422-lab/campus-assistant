@@ -552,3 +552,196 @@
 - 实际 Chrome 验证通过：三个子页面只有当前页可见；共用 header 元素与页面标记在导航切换中不变；刷新直达、前进后退、草稿与筛选保留、导航下划线对齐、旧地址兼容、未知地址恢复、375px 各页面无横向溢出，未发生 JavaScript 页面异常。已查看桌面首页与手机新增页截图。
 - 真实 GET 读取当前五条资料；测试明确拦截所有写请求。新增201/PATCH200、自动回资料库、状态变更后首页同步与标题纯文字显示均通过模拟响应验证，不宣称本轮有后端真实写入验收。个人数据库未被测试写入，后端文件与依赖未修改。
 - 继续维护现有 README 和本日志，保留用户自行修改的“Rock的资料库”标题。未暂存、提交或推送；后端学习仍由 Rock 亲手完成。
+
+
+## 2026-10-14 · 详情接口响应模型与实际 HTTP 验证
+
+- Rock 亲手新增 ResourceRead，声明 id、title、type、status；详情接口使用 response_model=ResourceRead 并返回查询字典，保留不存在资料的404处理。老师只读核对改动，未代写核心代码。
+- 老师实际请求正在运行的本地服务：存在编号返回200与四个字段，不存在编号返回404，非整数编号返回422；读取 OpenAPI 确认成功响应引用 ResourceRead，四个字段均为必需。只发送 GET 请求，未执行数据库查询或写入；未专项验证异常返回数据拦截，也未执行部署验证。
+- Rock 用自己的话正确解释：字典交由 FastAPI 响应模型校验，直接返回 JSONResponse 会绕过这一步。记录的是本次解释与实现，不据此推断已掌握所有响应处理。
+- 下一小步：由 Rock 为 GET /resources 添加 list[ResourceRead] 响应模型并直接返回字典列表；注意模型必须先定义，再被路由装饰器引用。尚未实施或验证。
+- 老师仅更新现有 README 与本日志，未修改后端、数据库，未提交或推送。
+
+
+## 2026-10-14 · 列表响应模型验证与筛选参数名称问题
+
+- Rock 已将 ResourceRead 提前定义，恢复 /resources 路径，列表声明 list[ResourceRead] 并返回字典列表；服务可以响应请求。
+- 老师实际 HTTP 核对 GET /resources 返回200，OpenAPI 成功响应为数组且每项引用 ResourceRead。查询参数实际名称为 resource_status。
+- 实际 HTTP 验证：传 status=reading 或 status=reading2 均返回200与未筛选列表；传 resource_status=reading 正确筛选，传 resource_status=reading2 返回422。由此定位接口与原有 status 参数约定不一致，而非 SQLite 筛选失效。
+- 下一小步由 Rock 将参数名恢复为 status，并同步函数内引用；允许不筛选时为 None。修正尚未实施或验证，列表功能阶段暂不标记全部完成。
+- 本轮老师只发送 GET 请求并维护现有文档，没有修改核心代码、直接查询数据库、发送写入请求或提交推送。
+
+
+## 2026-10-14 · 筛选名称修正与可选参数回归检查
+
+- Rock 将列表参数名及数据库调用恢复为 status，但当前函数参数只声明 Literal，没有 | None 或 = None。
+- 老师实际 GET 验证：status=reading 返回200且仅有 reading 资料；status=reading2 返回422；不传 status 返回422与 missing/Field required。OpenAPI 标记 status 必填。只读文件与 HTTP 证据一致，参数名称问题已修复，可选筛选尚未恢复。
+- 下一小步：Rock 在现有类型后恢复 | None = None，保留响应模型与筛选逻辑；改完验证不筛选、合法筛选、非法筛选。尚未修正或验证通过。
+- 老师仅维护现有文档，未修改后端、数据库，未发送写请求或提交推送。
+
+
+## 2026-10-14 · 列表响应模型与可选筛选阶段完成
+
+- Rock 已为 status 恢复 | None = None，保留 list[ResourceRead] 与字典列表返回。此前解释已确认对路径参数、查询参数和默认值的理解。
+- 老师实际 GET 核对：不传 status 返回200与列表；status=reading 返回200且所有记录为 reading；status=reading2 返回422与 literal_error。此前已实际核对 OpenAPI 数组响应引用 ResourceRead。本轮没有新增异常响应模型拦截或部署测试。
+- 本阶段学习点：输入模型与响应模型的区别，直接返回 JSONResponse 会绕过响应模型检查，list[ResourceRead]，模型定义顺序，查询参数名属于接口契约，允许 None 与默认 None 的区别。
+- 下一小步由 Rock 只修改 database.py 的 get_resource_by_id，用 try/finally 在正常查询与异常时关闭连接。当前异常清理尚未实现或验证；改完先检查正常200/不存在404，再用隔离模拟异常验证 close 调用，不修改个人数据库。
+- 老师本轮只做只读文件与 GET 核对并维护现有文档，未修改核心代码、直接查询数据库、发送写请求或提交推送。
+
+
+## 2026-10-15 · 详情连接异常清理验证与加快教学节奏
+
+- Rock 要求加快速度：后续同一功能的相关修改集中安排，熟悉语法不再反复提问，后端核心仍由 Rock 亲手实现。
+- 老师读取 get_resource_by_id，已将查询包在 try 中并在 finally 关闭连接。finally 内关闭语句缩进较深但语法合法，后续统一为常用4空格一级。
+- 实际编译检查通过；通过 AST 仅提取该函数，在内存中注入模拟连接，未导入原数据库模块、未打开数据库。4项测试通过：查到字典、未查到None、execute异常、fetchone异常；每项均确认 close 调用一次，两项异常均原样向外传播。
+- 实际只读 HTTP 请求：/resources/1 为200且字段齐全，/resources/999999 为404与资料不存在。本轮未执行数据库写入，也未据此宣称真实数据库故障或部署验证通过。
+- 下一组由 Rock 给 get_resources、add_resource、update_resource_status 应用同一 try/finally 模式；保持 SQL、参数、commit及返回行为。commit 留在 try 内，finally 只负责关闭。老师后续用隔离测试和临时数据库检查，不用个人数据库验证写入。尚未实现或验证。
+- 当前 Git 状态显示 index.html 已删除，属于现有用户工作区改动，老师未恢复或修改；本轮未验收旧首页。只维护现有文档，未提交推送。
+
+
+## 2026-10-15 · 明确新前端目录并转向笔记详情接口
+
+- Rock 澄清新的前端为 macOSnotes 文件夹。老师实际定位到 fastapi-learning/macos-notes-frontend，Git 已跟踪前端源码；镜像目录仍有同名副本。后续以现有 FastAPI 项目内这份前端为工作对象，不移动文件。
+- 只读核对 Note 类型的六个字段与 getNote 的 GET /api/notes/:id 契约，仍为 mock。没有重新构建或运行浏览器验收，未声称真实笔记接口已完成。
+- 调整下一组练习：Rock 在现有 main.py 实现 NoteRead、一个 welcome 测试样例和 GET /api/notes/{note_id} 的200/404；不复制资源表充当笔记表，不修改个人数据库。先验证真实 HTTP 路由，前端 fetch 与 SQLite 随后进行。尚未代写或实施。
+- get_resource_by_id 的异常清理已有上一轮测试证据；get_resources、add_resource、update_resource_status 的清理本轮读取仍未完成，保留待办，不标记已验收。
+- 本轮仅补充现有文档，未修改后端核心、前端实现或数据库，未暂存、提交或推送。
+
+
+## 2026-10-15 · 改为可用版本驱动的教学与笔记数据库骨架
+
+- Rock 明确要求从项目交付视角讲解每组工作现在和未来的作用，先搭必要框架、尽快投入基本使用，再细化与扩展功能。后端核心仍由 Rock 编写；老师准备非核心骨架、前端联调、验证和文档。不再按单行语法推进或反复测问熟悉知识。
+- 老师只读确认 NoteRead 已继承 BaseModel，测试时间已改为带时区字符串；实际 GET 笔记 welcome 返回200与完整六字段、未知编号返回404与笔记不存在。仍为服务端内存示例，不是 SQLite 持久化。
+- 新增 notes_database.py 未完成骨架，含 init_notes_table/create_note/get_note_by_id/list_notes/update_note 五个函数，均显式抛 NotImplementedError；包含字段与行为约定，不含已写好的 SQL 实现。不在导入时执行数据库操作，未接入 main.py。实际 compile 检查通过，仅证明骨架语法有效。
+- 设计保持当前六字段契约，tags 暂以 JSON 文本写入 SQLite、读取转为 list；固定 DB_PATH 避免工作目录影响，便于临时数据库验证；UUID 和 UTC 更新时间由后端生成。当前不额外建立标签/笔记本关系表。
+- 本组让 Rock 集中实现五个存储函数；下一组接入 GET列表/详情、POST新建、PATCH保存，老师适配真实前端。验收以新建、打开、保存、刷新和重启保留为目标，不以只有骨架或模拟功能宣称可用。
+- 本轮未创建 notes 表、未插入数据、未更改个人数据库或现有后端核心，未改前端、未提交或推送。旧资料函数剩余连接清理保留待办。
+
+
+## 2026-10-17 · 笔记数据库首次实现检查：阻塞项尚待修复
+
+- Rock 提交填写结果；老师只读核对 notes_database.py、database.py、main.py。新增与建表已有实现，详情/列表/更新仍保留 NotImplementedError，未标记五函数完成。
+- 实际 compile notes_database.py 在78行报 SyntaxError，根因是 SQL 字符串内嵌 note["id"] 等双引号，同时混淆列名、占位符与参数。完整临时数据库 CRUD 测试因此未运行。
+- 从源码提取 CREATE TABLE 字符串，在隔离内存 SQLite 中实际复现 near tags 的 OperationalError，字段之间缺少逗号。另独立复现 .isoformat 未调用得到方法对象，SQLite 参数绑定报不支持 builtin_function_or_method。
+- database.py 中模块级 execute 同时包含两条 CREATE；提取原 SQL 在内存 SQLite 执行，实际报 You can only execute one statement at a time。附加 notes DDL 还有 EIXSTS/DEFULT 拼写、分隔符及整数ID与既定字符串ID不一致的问题，不应继续维护第二套笔记表定义。
+- main.py 当前从 database 导入 notes_by_id 并调用它；新模块尚未接入。待 Rock 先恢复旧 resources 建表单条语句，将笔记实现集中 notes_database.py；修复新模块建表/新增后再验收，不据历史200/404推断当前服务可用。
+- 老师仅修改本 README 与日志；未改核心代码，未导入原数据库模块或打开个人数据库，未运行写接口、未提交推送。
+
+
+## 2026-10-18 · 笔记存储层临时数据库验收：13通过、更新待修
+
+- 老师只读复查确认 notes_database.py 本轮确实已更新，建表逗号、isoformat调用、参数化INSERT均修复，详情/列表/更新已有实现；main.py 移除旧笔记导入并暂时注释笔记路由，database.py 顶部恢复单条 resources 建表。三个文件均通过实际语法解析。
+- 实际加载笔记模块后、调用任何函数前，将 DB_PATH 改为自动清理的临时路径。临时数据库预置虚构 resources 哨兵行，建表两次后原表和记录保留。未导入原 database.py、未打开个人 learning.db。
+- 14项检查13通过：可重复建表/保留旧表，空列表，新建及标题清理/参数绑定/UUID与时区时间，空白标题拒绝且不新增，详情/不存在，中文与含逗号标签JSON往返，时间相同按ID排序，重新加载模块并重新连接后数据保留，以及五个函数执行SQL失败时关闭连接一次/不提交/原异常传播。
+- 唯一实际失败检查为保存更新：update_note 第133行 UPDATE 在逗号附近报 OperationalError。该检查后续更新时间、元信息保留和持久化断言未执行，不记为已通过。代码阅读还发现更新未校验空白标题、未生成新时间，第135行SELECT缺FROM且id=note_id写死，未处理未查到记录。
+- 下一组仅修改 update_note：使用 UPDATE notes SET ... WHERE id=?，依顺序绑定标题、正文、新时间和ID，保留tags/notebook/id，成功提交并关闭后复用 get_note_by_id，未知ID返回None；补空白标题拒绝。修复后再测更新、未知ID、空白、重复保存、元信息保留，随后接四条API与前端。
+- 本轮只维护现有README与日志，未代改核心实现，未接前端，未测试HTTP或完整服务进程重启，未操作个人数据库、提交或推送。
+
+
+### 2026-10-18 · 更新函数再次复查
+
+- Rock 已补空白标题检查和新时间表达式；实际临时数据库调用空白标题得到ValueError，合法更新仍因UPDATE末尾VALUES报OperationalError。代码仍将id列加入SET、WHERE写死note_id，保留重复SELECT；存储层更新未验收。
+- 本轮读取期间 get_note_by_id 参数被改为可选None，文件末尾新增 print(get_note_by_id())。该顶层调用会在导入时触发数据库查询，不属于可复用存储模块初始化。下一组移除该调用、恢复明确ID参数，并修正UPDATE和返回方式。
+- 老师第一次诊断未在调用查询前覆盖DB_PATH，意外连接个人数据库并尝试只读SELECT，报no such table: notes；没有执行写入语句。已向Rock披露，并立即修正隔离顺序。第二次仅加载声明，先设置临时DB_PATH再调用所有函数，未执行顶层查询；上述更新失败和空白拒绝结果来自临时数据库。
+- 没有代改核心代码，未接前端或运行HTTP验收。
+
+
+### 2026-10-18 · 笔记保存修复通过，进入 HTTP 接线
+
+- Rock 修正 UPDATE，移除 VALUES，按标题/正文/新时间/编号绑定参数；查询后检查 row is None，未知编号返回 None。老师未修改后端核心代码。
+- 本轮仅加载笔记模块声明，在调用函数前将 DB_PATH 指向自动清理的临时 SQLite 文件。实际通过：重复建表、空列表、新建/读取、更新标题和多行正文、更新时间变化、id/tags/notebook保留、其他笔记不变、重新查询得到已保存记录、未知ID返回None、空白标题拒绝且不改变原记录、重复保存数量不变、最近更新排序。此前模拟异常测试没有在本轮重跑。
+- main.py 当前笔记示例路由仍被注释，未导入 notes_database；本轮尚无真实 HTTP 或前端联调证据，未测试完整服务进程重启，未打开或修改个人 learning.db。
+- 下一组 Rock 仅修改 main.py：lifespan启动建表、NoteCreate/NoteUpdate模型、GET列表/详情、POST新建、PATCH保存；成功返回NoteRead/list[NoteRead]，不存在404，空白标题ValueError转422。老师后续用隔离数据库验收HTTP，再适配前端。
+- 本轮老师只维护现有 README 与本日志，未修改核心实现，未提交或推送。
+
+
+## 2026-10-19 · 笔记HTTP首次接线验收：部分通过，契约待修
+
+- Rock 已接入lifespan启动建表、NoteCreat/NoteUpdate请求模型与四个笔记路由。老师先邀请Rock解释yield前建表的作用；代码核心未代改。
+- 隔离方法：先切换到自动清理的临时工作目录，将notes_database.DB_PATH指向临时learning.db，再导入main；旧database模块的相对路径建表也只落在临时目录。短暂Uvicorn监听随机本机端口，实际HTTP请求结束后关闭并清理，未打开个人数据库。未安装额外依赖。
+- 通过：lifespan建表、详情200/不存在404、已有笔记保存200与HTTP再读一致、空白标题422且原记录不变。
+- 实际问题：列表返回201；约定POST /api/notes返回405，实际新建路由为/app/notes；实际路径仅交title返回422，缺id/content/tags/notebook/updatedAt，因参数误用NoteRead；临时提交完整六字段可创建但返回200；PATCH未知编号返回500，因数据库返回None后未转404。
+- 下一组仅由Rock修main.py：列表200；新建路径/api/notes、请求模型NoteCreate（统一原NoteCreat命名）、成功201；保存捕获ValueError后补None转404。老师随后重新验收约定路径和输入；前端仍为mock，不标记联调或完整服务重启通过。
+- 老师本轮只维护README与本日志，未修改核心代码，未提交推送。
+
+
+### 2026-10-19 · HTTP复测：仅剩新建响应模型与状态码
+
+- Rock 已修列表状态、新建路径和输入模型、保存未知编号404。再次使用临时工作目录、临时DB_PATH和短暂随机本机端口服务实际HTTP测试；未打开个人learning.db。
+- 通过：空列表200；仅交title创建成功且列表包含完整六字段；详情200、保存200与HTTP再读一致；详情/保存未知编号404；新建/保存空白标题422且数据不变。
+- 新发现：新建装饰器被改成response_model=NoteCreate、status_code=200，实际新建只返回title。要求仅改该装饰器为NoteRead/201，保留输入NoteCreate与函数体。新建完整响应尚未验收，不接前端。
+- 老师只更新现有README和本日志，未改核心实现，未提交推送。
+
+
+### 2026-10-19 · 笔记HTTP验收通过与React真实联调
+
+- Rock 修正POST为NoteRead/201。老师实际临时HTTP验证新建201六字段、列表、详情、保存后再读、未知ID404、空白标题422且原记录不变，全部通过。200表示成功、201表达新资源已创建；这个状态码本身不执行数据库提交。
+- 按已授权的前端范围，老师仅在原项目内macos-notes-frontend修改fetch适配、Vite /api代理、共享服务器笔记与草稿状态、空数据库入口和模拟范围提示；不改镜像前端，不改三个产品后端Python核心文件。文件树按真实notebook分组，搜索和标签前端计算；反链待接入仅显示中心，云同步仍模拟，偏好会话内有效。
+- 实际npm run build通过。历史mock测试已改为七项真实集成测试，每项独立临时DB与真实FastAPI进程，经Vite代理由Chrome访问。七项全部通过，涵盖空库新建201/完整字段、文件树/布局/草稿/历史、保存刷新与后端进程重启、422/断线保留草稿后恢复、真实搜索/标签视图与模拟边界、404/未知路由/连接恢复、390px窄屏。预期断线场景的ECONNREFUSED日志属于故障测试，未视为真实服务不可用。
+- 测试支持代码tests/run-backend.py在导入main前隔离DB_PATH和工作目录；fixtures.ts管理临时进程与重启。增加测试端口归属标记，防止误用占用端口的其他服务；不新增产品测试控制接口。所有写入测试都使用临时数据。
+- 为供Rock实际使用，先只读查看个人learning.db的notes表结构，确认尚无此表；随后启动正式本机8000和5173服务，lifespan创建独立notes表（不删除/移动旧表或文件、不插入示例）。实际只读HTTP确认health200、前端200、代理/api/notes200且空列表。此处确实打开并由应用初始化个人数据库，与临时测试分开记录。
+- 已更新根README、前端README和源码汇总；无Git提交或推送，不上传数据库。下一步Rock亲手新建、保存、刷新验收个人笔记，再选择下一项功能。
+
+- 测试支持代码加固后的中间复测出现1通过/6失败，均发生在临时后端bind阶段（Address already in use），产品请求未执行；原因是我新增的原始socket未设置SO_REUSEADDR，关闭后的TIME_WAIT阻止快速复用。补上该选项且保留专属就绪标记后，最终七项Chrome测试再次全部通过（8.4秒），包括进程重启与断线恢复。此故障及修复仅涉及老师的测试启动器。
+
+
+### 2026-10-19 · 中文输入问题：搜索框组合输入被路由打断
+
+- Rock反馈无法输入中文。老师先询问具体输入位置和浏览器，尚未收到反馈；独立只读检查后端/前端，未将故障归咎数据库，也未操作个人笔记。此前fill中文只证明能接受既成文本，未覆盖输入法组合过程。
+- 新增两项原生Chrome组合输入协议测试，在临时数据库运行。修复前标题/正文中文提交与保存刷新通过；搜索框原生组合从n到ni实际变成nni，断言失败。代码对应搜索输入直接把每次onChange写入URL，打断组合过程。
+- 仅修前端UtilityPages.tsx：独立本地input状态同步输入，useRef记录composition，组合期间不更新URL，compositionend后提交查询；URL变化仍同步输入，保留普通搜索。未修改后端核心或数据库。
+- 实际npm run build通过，九项Chrome端到端测试全部通过（原七项+中文标题/正文+中文搜索）。中文测试使用Input.imeSetComposition/Input.insertText并确认compositionstart/end；搜索还断言组合期间URL不变。此证据不等同于手动操作macOS候选窗口，用户实际问题位置仍待确认。
+- 更新现有README及源码汇总；无Git提交或推送。
+
+
+### 2026-10-19 · 澄清搜索语义并实现按顺序、允许间隔的匹配
+
+- Rock举例正文“今天好开心 aaa”、查询“今天 a”，并要求符合输入语序。老师此前误解为任意词匹配；此前自动审核失败后仅在/tmp准备的任意词补丁未应用，本轮只读确认项目仍为原连续子串筛选。旧补丁已被本轮实现取代，不应执行。
+- 本轮权限审核完成后，老师仅改前端api/index.ts的listNotes和搜索提示，忽略查询空白、将字符按输入顺序逐个匹配，可跳过正文中间字符；每个查询字符必须出现，重复字符需足够次数。标题/正文分别匹配，避免跨字段凑出关键词；保留标签交集筛选、大小写不敏感与空白查询全部返回。未修改Python核心或个人数据库。
+- 实际构建通过；仅运行三项相关Chrome测试全部通过（5.2秒）：新增顺序匹配测试、中文搜索组合输入、既有真实笔记搜索/标签视图。新增测试通过临时真实API创建三条合成笔记，核对“今天 a”与“a 今天”分别找到不同语序的笔记、“今 开 A”允许隔字、倒序/缺字/重复字符不足不命中、全角空白查询返回全部。本轮未重跑此前九项全量测试。
+- 更新现有README、学习日志与源码汇总。无Git提交或推送。
+
+
+### 2026-10-19 · 下一项构建：笔记删除（已布置，未实现）
+
+- Rock要求继续构建。老师只读复核实际项目 main.py、notes_database.py、前端API和当前Git状态：已有四类真实笔记路由及前端顺序搜索，没有笔记DELETE路由或前端删除API。保持真实项目内前端与镜像副本分离，保留全部已有改动。
+- 下一组按一个可用功能推进：Rock在notes_database.py实现delete_note(note_id: str) -> bool，参数化DELETE、commit、finally关闭；用cursor.rowcount判断是否命中。main.py新增DELETE /api/notes/{note_id}，成功204空响应，不存在404，不收请求体。数据库层返回业务结果，HTTP层转换状态码。
+- 不新增表；当前方案为永久删除，前端按钮接入时需明确确认。核心代码仍由Rock编写，老师尚未代写或接入按钮。完成后由老师先在临时数据库验证目标删除、其他笔记保留、重复删除404及HTTP空响应，再处理前端共享状态与路由。
+- 本轮仅做代码阅读并更新现有README/日志；未运行删除、未写个人数据库、未执行新功能测试，未提交或推送。
+
+
+### 2026-10-19 · 删除首次检查：存储通过，HTTP接口待修
+
+- Rock新增delete_note和delete_by_id；老师先请他解释False如何转404，Rock回答不知道，因此集中说明正常返回值与异常的区别。False不会触发except ValueError，HTTP层需要显式if判断。
+- 实际仅用AST提取学生delete_note函数，在临时SQLite预置两行合成数据验证：目标删除True、重复删除False、不存在False、其他笔记保留，共四项通过。未导入产品main或database模块，未打开个人learning.db，未发送删除HTTP请求。
+- 代码阅读发现路由使用POST而不是DELETE、response_model=bool与204无响应体冲突、直接return布尔结果且只捕获ValueError无法将不存在转换为404。用独立FastAPI实例复现该装饰器配置，注册即抛AssertionError: Status code 204 must not have a response body；这是隔离复现，未声称实际完整服务启动测试通过。
+- 下一步只由Rock修改main.py：改DELETE、移除bool响应模型、补note_id:str、显式检查删除返回值False并raise HTTPException(404)，成功返回Response(status_code=204)，补Response导入。老师给局部判断提示，不代写完整接口，后端HTTP/前端删除仍待验收。
+- 本轮老师仅维护现有README与日志，没有修改后端核心、前端或个人数据库，没有Git提交或推送。
+
+
+### 2026-10-19 · 删除再次检查：改用异常方案，路由仍阻塞启动
+
+- Rock将delete_note改为成功返回True、不存在抛ValueError，并将接口except中的detail改为str(exc)。这使原先except无法处理False的问题在当前方案下得到解决；属于可行的替代方案，不要求再改回布尔False，也不将业务ValueError混同于数据库故障。
+- AST仅提取delete_note，在临时SQLite实际通过四项：目标删除True、重复删除ValueError、不存在ValueError、其他笔记保留。其最新实际契约是True或异常，旧布尔False约定由此变更。
+- 隔离临时工作目录与notes_database.DB_PATH后，实际import main在注册最后路由时抛AssertionError: Status code 204 must not have a response body。相比上一轮独立路由复现，本轮确认了当前完整应用导入阻塞；没有启动HTTP服务或执行HTTP删除测试，未打开个人learning.db。
+- 仅需Rock修改main.py：POST改DELETE，移除response_model=bool，参数明确note_id:str，导入Response，成功调用数据库后返回Response(status_code=204)，保留现有ValueError转404方案。当前HTTP尚未验收，前端删除未接入。
+- 老师未修改产品核心代码或前端，仅维护现有README与日志；未提交推送。
+
+
+### 2026-10-19 · 保留Rock的返回方式，删除HTTP与页面接入验收通过
+
+- Rock质疑是否必须使用显式Response，并保存DELETE方法、移除bool响应模型、补字符串参数，成功分支仍直接返回notes_db.delete_note。老师先前将显式Response说成必须，限制过头；本轮实际验证后明确纠正，保留学生写法。异常方案也保留：成功True、不存在抛ValueError，由接口捕获转404。
+- 在临时工作目录设置notes_database.DB_PATH后才导入main，启动临时随机本机端口Uvicorn，通过10项真实HTTP/数据库检查：两篇新建201、删除204且响应体0字节、已删详情404、重复删除404与错误详情、未知删除404、其他笔记六字段不变、列表只剩保留项、OpenAPI DELETE无请求体与204内容、新SQLite连接确认删除已持久化。当前FastAPI 0.142.2会清空204响应体；此前实际启动阻塞来自response_model=bool与204冲突，不是直接return本身。未操作个人learning.db。
+- 老师按前端授权范围更新公共request的204处理、deleteNote、NotesContext.remove、编辑器永久删除确认/忙碌保护/失败保留输入，以及成功后的笔记草稿清理和路由跳转。“文档”导航仅复用仍存在的编号，避免删除最后一篇后再次打开旧编号。没有修改main.py/database.py/notes_database.py产品核心，也未新增表或回收站。
+- 新增tests/delete.spec.ts四项真实API Chrome场景：取消不发请求与草稿保留、确认204/等待期间禁用操作/清理树与计数/重启后删除仍在/搜索无结果；最后一篇空入口与文档导航；断线保留草稿并重连重试；其他页面先删后的404提示且草稿保留。等待模拟仅拦住再放行真实请求，没有伪造响应。
+- npm run build实际通过。14项Chrome全量首轮13通过/1失败（26.2秒），失败是测试试图通过Chrome协议读取204响应体，报No data found for resource with given identifier，不是产品删除失败。去掉该不适用读取，空体仍由独立HTTP检查覆盖；仅重跑该场景通过（4.0秒）。产品代码无需调整；全部14场景均有通过证据，未声称修测试后又跑了一次全量。故障注入的ECONNREFUSED为预期日志。
+- 更新既有根README、前端README及源码汇总。git diff --check通过（更新文档前）；所有写入测试用临时数据库，未提交或推送。当前交付是基本笔记增查改删及顺序搜索可用，标签编辑/独立目录管理/反链/云同步仍未完成。
+
+
+### 2026-10-19 · GitHub同步范围与发布前核对
+
+- Rock明确要求把自己的更改、尤其新增删除功能同步到GitHub。远端origin为2723191422-lab/campus-assistant，目标分支main；fetch后确认本地HEAD与origin/main同为既有提交，没有远端并行改动需要合并。
+- 本次提交范围为已核对的项目代码与文档：笔记SQLite及五类HTTP操作（含Rock新增删除）、React真实联调/删除确认/顺序搜索/中文输入修复、测试支持和用例、说明与学习记录；同时保留Rock已有资料连接清理和旧单页入口删除。远端此前仅为mock前端，因此将删除所需的笔记链路一并同步。
+- 显式列出暂存路径，不使用git add .；数据库、环境、依赖、构建产物、测试报告、AGENTS.md、.vscode和个人练习/草稿不纳入。候选文本的常见密钥模式扫描未发现匹配，未输出任何密钥值；检查确认数据库与环境等路径被忽略。
+- 既有构建、10项删除HTTP/数据库、14个Chrome场景的通过证据见上一节。本轮额外实际检查三个后端模块语法，以及临时SQLite下资料新增/详情/筛选/状态更新/不存在结果，均通过；未改业务逻辑，仅清理三个Python文件的行尾空白与文件末尾空行，便于提交检查。
+- 本条记录描述同步范围和发布前检查；推送是否成功另以git push结果及远端提交号核对为准，不将本地commit视为已上传。所有新增写入验证仍只使用临时数据库。

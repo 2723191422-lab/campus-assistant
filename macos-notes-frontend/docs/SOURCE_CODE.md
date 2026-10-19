@@ -1,12 +1,13 @@
 # 岩笺前端 · 完整项目结构与文件代码
-本文件汇总所有文本项目文件的完整内容（含依赖锁文件）；截图列入结构但以 PNG 原文件交付。依赖目录与构建/测试产物不打包。
+
+2026-10-19更新：真实笔记增查改删、中文组合输入及按顺序允许间隔的搜索。仅汇总配置、源码、测试和锁文件；不含数据库、依赖或构建产物。旧截图为mock阶段历史截图。
+
 ## 完整文件清单
+
 ```text
 macos-notes-frontend/
   .gitignore
   README.md
-  docs/preview-desktop.png
-  docs/preview-mobile.png
   index.html
   package-lock.json
   package.json
@@ -21,16 +22,22 @@ macos-notes-frontend/
   src/main.tsx
   src/mocks/data.ts
   src/pages/EditorPage.tsx
+  src/pages/NotesHome.tsx
   src/pages/UtilityPages.tsx
   src/state/NotesContext.tsx
   src/styles/Desktop.module.css
   src/styles/global.css
   src/types.ts
   src/vite-env.d.ts
+  tests/delete.spec.ts
   tests/desktop.spec.ts
+  tests/fixtures.ts
+  tests/ime.spec.ts
+  tests/run-backend.py
+  tests/search.spec.ts
   tsconfig.json
   vite.config.ts
-  docs/SOURCE_CODE.md（本汇总文档）
+  docs/SOURCE_CODE.md
 ```
 
 ## .gitignore
@@ -44,7 +51,6 @@ dist/
 test-results/
 playwright-report/
 AGENTS.md
-
 ````
 
 ## README.md
@@ -52,111 +58,87 @@ AGENTS.md
 ````markdown
 # 岩笺 · macOS 风格桌面笔记前端
 
-React + TypeScript + React Router + lucide-react + CSS Modules。独立的纯前端项目；全部示例数据在 `src/mocks/`，组件只通过 `src/api/` 调用异步数据接口。
+React + TypeScript + React Router + lucide-react + CSS Modules。笔记的新建、列表、详情、保存和删除已接入 Rock 编写的 FastAPI + SQLite；数据访问集中在 src/api/index.ts，界面保留既有四栏布局。
 
 ## 本地运行
 
-安装 Node.js 22.12+（推荐 Node.js 24），在本目录运行：
+在后端目录的终端启动 FastAPI：
 
 ```sh
+cd /Users/gaoyan/Documents/Codex/2026-10-06/fastapi-learning
+.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+在另一个终端启动前端（已有服务运行时不必重复启动）：
+
+```sh
+cd /Users/gaoyan/Documents/Codex/2026-10-06/fastapi-learning/macos-notes-frontend
 npm install
 npm run dev
 ```
 
-访问 http://127.0.0.1:5173/ 。默认打开 `/notes/welcome`。
+访问 http://127.0.0.1:5173/ 。数据库为空时显示“创建第一篇笔记”；已有笔记时打开最近更新的一篇。后端文档位于 http://127.0.0.1:8000/docs 。旧的后端根路径不是这个 React 应用的入口。
+
+Vite 开发代理将 /api 请求转发到 http://127.0.0.1:8000，前端不硬编码数据库或后端绝对地址。可通过环境变量 ROCK_API_TARGET 覆盖代理目标，测试即使用独立目标。该代理属于开发服务；生产部署或 npm run preview 需另外配置 API 反向代理。
+
+## 当前功能与边界
+
+- 新建、列表、详情和保存：真实 HTTP + SQLite，服务器生成编号与更新时间；保存成功以后，刷新和后端重启仍保留数据。
+- 删除：编辑器“删除笔记”按钮经明确永久删除确认后调用真实DELETE；取消不发请求。服务器204确认后清理笔记/草稿/文件树，跳转其他笔记或空入口；等待时禁用重复操作，404或断线时保留当前输入并显示错误，无回收站。
+- 目录：按真实笔记的 notebook 字段在前端分组；目前新建均放入收件箱，尚无文件夹编辑或移动接口。
+- 搜索、标签计数与筛选：从真实 GET /api/notes 结果在前端计算。查询忽略空白，字符必须按输入顺序出现，允许中间隔字；标题与正文分别匹配，英文不区分大小写。不是服务端搜索，也没有新增标签编辑功能。
+- 草稿：切换笔记保留；保存失败保留，只有服务器确认成功才清理。未保存的草稿不承诺跨刷新保留。
+- 反链与关系图：分析待接入，只显示真实中心笔记；不再展示虚构笔记或假关联。
+- 偏好：字号与行号仅在当前页面会话生效。云同步仍明确标为模拟，不连接云端。
+- Markdown 安全预览：支持标题、段落、引用、列表和 [[id|名称]]；React 转义文本，不解析 HTML，也不声称完整 Markdown 支持。
+- 服务不可用、404、422 均显示错误；不会退回 mock 数据或假报保存成功。
+
+## 数据访问约定
+
+| 函数 | 当前数据来源 |
+| --- | --- |
+| listNotes | GET /api/notes，query/tag 在前端筛选 |
+| getNote | GET /api/notes/:id |
+| createNote | POST /api/notes，提交 title，返回201和完整 Note |
+| updateNote | PATCH /api/notes/:id，同时提交 title/content |
+| deleteNote | DELETE /api/notes/:id，无请求体；成功204无响应体，不存在404 |
+| getNotebooks / notesToTree | 真实笔记按 notebook 分组，不调用 /api/notebooks |
+| getTags | 真实笔记 tags 聚合，不调用 /api/tags |
+| getBacklinks / getGraph | 待接入；空反链占位与真实中心节点 |
+| getPreferences / updatePreferences | 当前页面会话内存 |
+| syncNotes | 模拟，不连接云端 |
+
+Note 六字段保持 id/title/content/tags/notebook/updatedAt。HTTP 失败会抛错，由页面显示；204在公共请求层提前返回，不调用response.json()。src/mocks/data.ts 保留为历史示例，当前笔记数据不再读取它；仅复用其中的偏好默认值。
+
+## 文件与修改位置
+
+- src/api/index.ts：真实 HTTP、错误转换及前端分组/筛选适配。
+- src/state/NotesContext.tsx：服务器笔记、草稿、保存响应与文件树状态。
+- src/pages/NotesHome.tsx：空数据库入口、最近笔记跳转和连接失败重试。
+- src/pages/EditorPage.tsx：读取、编辑、保存、永久删除确认及显示服务器返回的时间。
+- src/components/：既有四栏窗口、递归文件树、安全预览与反链占位。
+- vite.config.ts：开发代理；playwright.config.ts：独立端到端测试端口。
+- tests/fixtures.ts 与 tests/run-backend.py：每项测试独立临时数据库，可停止/重启临时后端；这些是测试支持代码，不是产品后端。
+- docs/SOURCE_CODE.md：当前配置、源码和锁文件汇总，不参与构建。
+
+## 验证
 
 ```sh
-npm run typecheck
 npm run build
-npm run preview
+npm test
 ```
 
-已安装 Google Chrome 时，可运行 `npm test` 执行随项目提供的端到端测试。测试配置使用本机 Chrome；没有安装 Chrome 的环境可以在 `playwright.config.ts` 移除 `channel: 'chrome'`，然后执行 `npx playwright install chromium`。
+npm test 使用本机 Google Chrome、已有后端 .venv，以及专用前端15173/后端18000端口。每项测试创建独立临时目录，并在导入应用前隔离旧资料模块的相对路径和笔记 DB_PATH；不复用个人服务或写入个人数据库。测试端口被占用时应先释放，不会自动连接其他服务。没有 Chrome 时需调整 Playwright 浏览器配置。
 
-`npm run build` 先检查 TypeScript，再生成 `dist/`。Vite 仅为前端开发与预览工具，不包含 API 服务端。发布 BrowserRouter 应用时，静态托管需把未知页面路径回退到 `index.html`；否则直接刷新 `/notes/welcome` 会由托管服务器返回 404。
+2026-10-19（顺序搜索变更前）：TypeScript 检查与 Vite 构建通过；九项真实 Chrome 联调测试通过，覆盖空库新建201与六字段、文件树/历史/草稿、保存后刷新与后端进程重启仍保留、422和服务中断保留草稿后恢复、真实笔记搜索/标签视图与模拟范围、404/未知页/连接恢复、390px窄屏。测试中的数据库均为临时数据。这是开发环境的真实API联调验证，不代表生产部署、云同步或反链分析完成。
 
-## 功能与操作
+## 删除功能验收（2026-10-19）
 
-- 四栏窗口：56px 模块导航、220px 递归文件树、居中的最大 700px 正文、280px 反链面板。
-- 顶部文件树/反链按钮隐藏或显示侧栏。桌面初始展示四栏；窄屏默认隐藏侧栏，手动打开为浮层。
-- 文件夹按钮展开/折叠；文档通过 React Router 切换，激活项淡蓝高亮。
-- 反链条目、关系图节点和正文 `[[id|名称]]` 链接均能打开对应文档。
-- 搜索标题和正文，支持空结果；标签按实际 mock 笔记计数并筛选。
-- 编辑按钮切换到 Markdown 源码，显式保存；⌘/Ctrl+S 保存，⌘/Ctrl+K 打开搜索。
-- 新建按钮在收件箱创建笔记。未保存草稿按文档 id 保留，切换文档不会丢失当前输入。
-- 设置可以调整正文字号、显示源码行号；模拟同步给出明确 mock 提示。
-- 路由加载和失败有状态提示，未知文档和未知页面有返回入口。
+Rock完成数据库删除和DELETE接口：成功返回True、不存在抛ValueError，接口将ValueError转换为404；装饰器status_code=204且没有response_model。当前FastAPI 0.142.2会清空204响应体，直接返回数据库结果的写法已通过实测，无需强制显式Response。此前bool响应模型与204冲突的配置已修复。
 
-**模拟保存、偏好和新建笔记仅保留在当前页面会话。刷新会恢复初始示例。没有真实同步、持久化、后端、数据库或用户登录。** 编辑器是 textarea + 安全的轻量预览，不是完整富文本编辑器。预览支持标题、段落、引用、列表和双向链接；不解析 HTML，不实现完整 Markdown 规范。
+老师只改前端：公共请求支持204空响应、deleteNote适配、成功后清理共享笔记与草稿、永久删除确认、处理中禁用操作、失败保留草稿、跳转另一篇/空入口，并修复“文档”导航记住已删除编号的问题。没有代改Python产品核心。
 
-## 文件结构
-
-```text
-macos-notes-frontend/
-├── .gitignore
-├── index.html
-├── package.json
-├── package-lock.json
-├── tsconfig.json
-├── vite.config.ts
-├── playwright.config.ts
-├── README.md
-├── tests/desktop.spec.ts
-├── src/
-│   ├── main.tsx
-│   ├── App.tsx
-│   ├── types.ts
-│   ├── vite-env.d.ts
-│   ├── api/index.ts
-│   ├── mocks/data.ts
-│   ├── state/NotesContext.tsx
-│   ├── components/
-│   │   ├── IconButton.tsx
-│   │   ├── FileTree.tsx
-│   │   ├── DesktopLayout.tsx
-│   │   ├── BacklinksPanel.tsx
-│   │   └── MarkdownPreview.tsx
-│   ├── pages/
-│   │   ├── EditorPage.tsx
-│   │   └── UtilityPages.tsx
-│   └── styles/
-│       ├── global.css
-│       └── Desktop.module.css
-└── docs/
-    └── SOURCE_CODE.md
-```
-
-`docs/SOURCE_CODE.md` 汇总项目文件结构及所有配置、源码和锁文件的完整内容；它是交付文档，不参与构建。`node_modules/`、`dist/` 和截图是依赖/生成产物，不属于手写源码。
-
-## 后端接入约定
-
-每个 `src/api/index.ts` 导出的函数前均标注 HTTP 方法、预期路径、参数与返回类型。后续保持函数签名和类型不变，将 mock 实现替换为 `fetch` 即可。HTTP 非成功状态应抛出 `Error`，让现有组件显示错误。以下路径仅是前端约定，没有创建任何服务端实现。
-
-| 函数 | 预期接口 | 返回 |
-| --- | --- | --- |
-| getNotebooks | GET /api/notebooks | TreeNode[] |
-| listNotes | GET /api/notes?query=&tag= | Note[] |
-| getNote | GET /api/notes/:id | Note |
-| updateNote | PATCH /api/notes/:id | Note |
-| createNote | POST /api/notes | Note |
-| getBacklinks | GET /api/notes/:id/backlinks | Backlink[] |
-| getGraph | GET /api/notes/:id/graph | GraphData |
-| getTags | GET /api/tags | {name,count}[] |
-| getPreferences | GET /api/preferences | Preferences |
-| updatePreferences | PATCH /api/preferences | Preferences |
-| syncNotes | POST /api/sync | {mode,syncedAt} |
-
-目前反链是独立 mock 关系，编辑正文不会自动重算链接。真实后端如何保存或计算链接由 Rock 决定；前端不生成 schema、ORM 或迁移文件。
-
-## 布局与修改位置
-
-- `DesktopLayout.tsx`：共用窗口、工具栏、模块栏、左右侧栏和路由出口。
-- `FileTree.tsx`：递归节点、展开状态和文档高亮。
-- `BacklinksPanel.tsx`：反链与 SVG 局部图，支持键盘打开图节点。
-- `EditorPage.tsx`：加载、草稿编辑、模拟保存。
-- `NotesContext.tsx`：父布局共享资料、草稿和偏好。
-- `Desktop.module.css`：带中文组件注释的窗口/四栏/毛玻璃/编辑器样式。
-- `api/index.ts`：唯一的数据接口适配边界。
+实际npm run build通过。临时本机HTTP服务10项检查通过，包含真实204且零字节、已删详情404、重复/未知删除404、其他笔记保留、列表同步、OpenAPI契约及新SQLite连接可见删除。Chrome首轮14项中13项通过，剩余一项因测试工具无法读取204响应体失败；移除不适用的浏览器body读取后，仅重跑该项通过（4.0秒），产品代码未再修改。全部14个场景均已通过验证，不声称在修正后重新跑过全量。四项新增删除场景包含取消、防重复、重启持久化/搜索移除、最后一篇空入口与导航、服务中断重试、跨页面已删404且草稿保留。所有写入测试均使用临时数据库，未使用个人笔记。
 
 ## 参考来源与代码归属
 
@@ -166,15 +148,29 @@ macos-notes-frontend/
 - Joplin：[laurent22/joplin](https://github.com/laurent22/joplin)。阅读参考路径 [`packages/app-desktop/gui/NoteList/NoteList2.tsx`](https://github.com/laurent22/joplin/blob/dev/packages/app-desktop/gui/NoteList/NoteList2.tsx)，关注文档列表和当前选择的组织。本项目未复用其虚拟列表、插件或数据库实现。
 - React Router：依据[官方嵌套路由说明](https://reactrouter.com/start/declarative/routing)使用父路由、子路由和 `Outlet`。
 
-引用源文件在 2026-10-14 核对；链接指向上游分支，未来可能变化。依赖版本锁定在 package-lock.json。展示项目时应如实说明：前端由 Codex 按 Rock 的界面要求协助实现，后端与数据库尚待 Rock 完成。
+引用源文件在 2026-10-14 核对；链接指向上游分支，未来可能变化。依赖版本锁定在 package-lock.json。展示项目时应如实说明：前端由 Codex 按 Rock 的界面要求协助实现，后端与数据库核心由 Rock 实现，前端及联调由 Codex 协助；当前完成范围见本页。
 
-## 实际验证（2026-10-14）
+
+## 中文输入验证（2026-10-19）
+
+实际复现搜索框拼音组合中 n → ni 被错误拼成 nni。根因是受控输入每次变化直接更新 URL 搜索参数，路由更新打断浏览器组合输入。现在输入框先同步本地字符串，composition 期间不更新 URL，选词结束再发布查询；普通输入和地址栏查询恢复仍保留。
+
+新增 tests/ime.spec.ts：用 Chrome 原生 Input.imeSetComposition / Input.insertText 产生 compositionstart/update/end，验证标题、正文的中文提交/保存/刷新，以及搜索拼音组合期间 URL 不变、选词后中文查询正确。修复前1通过1失败，修复后连同原七项共九项通过，构建通过。这是浏览器组合输入协议验证，不等同于实际操作 macOS 输入法候选窗口；用户具体输入位置和浏览器仍待反馈。之前直接填入中文的测试不足以覆盖该问题。
+
+## 顺序搜索更新（2026-10-19）
+
+Rock澄清要求是按输入语序匹配，允许笔记中间夹着其他字符，不是空格拆词后任意词命中。当前实现忽略查询空白，每个查询字符依次在标题或正文中匹配；标题、正文分别计算，不跨字段拼接。每个查询字符都必须出现，相同字符需要足够次数，不支持错字替换。
+
+例如正文“今天好开心 aaa”：查询“今天 a”“今开a”均命中，“a 今天”“今天 z”“今天 aaaa”不命中。空白查询返回全部，标签筛选保留。
+
+本轮构建通过，只重跑与变更相关的三项Chrome测试，均通过：顺序匹配正反例、中文搜索组合输入、既有真实笔记搜索/标签视图。新增tests/search.spec.ts；本轮未重跑此前全部九项。所有写入仍仅使用临时数据库，产品后端未修改。
+
+## 历史验证（2026-10-14，纯 mock 阶段）
 
 - `npm run build` 通过：TypeScript 严格检查和 Vite 生产构建成功。
 - `npm test` 的七项 Chrome 端到端测试全部通过，覆盖共享布局与历史导航、递归树与侧栏空间、草稿/保存/刷新恢复/安全显示、搜索与标签、新建/设置/模拟同步、关系图键盘跳转与不存在路径、390px 窄屏布局。
-- 本机访问 http://127.0.0.1:5173/ 返回 HTTP 200。截图见 `docs/preview-desktop.png` 和 `docs/preview-mobile.png`。
+- 本机访问 <http://127.0.0.1:5173/> 返回 HTTP 200。截图见 `docs/preview-desktop.png` 和 `docs/preview-mobile.png`。
 - 这些是纯前端 mock 验证，不代表真实 API、数据库、云同步或部署已经完成。
-
 ````
 
 ## index.html
@@ -186,14 +182,13 @@ macos-notes-frontend/
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f5f5f7" />
-    <title>岩笺 · 桌面笔记</title>
+    <title>岩笺</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
 ````
 
 ## package-lock.json
@@ -1635,7 +1630,6 @@ macos-notes-frontend/
     }
   }
 }
-
 ````
 
 ## package.json
@@ -1671,7 +1665,6 @@ macos-notes-frontend/
     "vite": "8.3.4"
   }
 }
-
 ````
 
 ## playwright.config.ts
@@ -1679,28 +1672,31 @@ macos-notes-frontend/
 ````typescript
 import { defineConfig } from '@playwright/test';
 
-// 使用本机 Chrome；测试只访问纯前端 mock，不涉及个人数据或真实 API。
+// 每项测试使用独立临时SQLite和真实FastAPI；不复用个人服务或数据库。
 export default defineConfig({
   testDir: './tests', fullyParallel: false, workers: 1,
-  use: { baseURL: 'http://127.0.0.1:5173', browserName: 'chromium', channel: 'chrome', viewport: { width: 1440, height: 1000 } },
-  webServer: { command: 'npm run dev', url: 'http://127.0.0.1:5173', reuseExistingServer: true },
+  use: { baseURL: 'http://127.0.0.1:15173', browserName: 'chromium', channel: 'chrome', viewport: { width: 1440, height: 1000 } },
+  webServer: {
+    command: 'npm run dev -- --port 15173', url: 'http://127.0.0.1:15173', reuseExistingServer: false,
+    env: { ROCK_API_TARGET: 'http://127.0.0.1:18000' },
+  },
   reporter: 'list'
 });
-
 ````
 
 ## src/App.tsx
 
 ````tsx
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 import { DesktopLayout } from './components/DesktopLayout';
 import { EditorPage } from './pages/EditorPage';
+import { NotesHome } from './pages/NotesHome';
 import { SearchPage, TagsPage, SettingsPage, NotFoundPage } from './pages/UtilityPages';
 
-// 共用四栏窗口是父路由，功能界面通过父布局的 Outlet 显示。
 export function App() {
   return <Routes><Route element={<DesktopLayout />}>
-    <Route index element={<Navigate to="/notes/welcome" replace />} />
+    <Route index element={<NotesHome />} />
+    <Route path="notes" element={<NotesHome />} />
     <Route path="notes/:noteId" element={<EditorPage />} />
     <Route path="search" element={<SearchPage />} />
     <Route path="tags" element={<TagsPage />} />
@@ -1708,101 +1704,112 @@ export function App() {
     <Route path="*" element={<NotFoundPage />} />
   </Route></Routes>;
 }
-
 ````
 
 ## src/api/index.ts
 
 ````typescript
-import { notes, notebooks, incomingLinks, preferences } from '../mocks/data';
+import { preferences } from '../mocks/data';
 import type { Note, TreeNode, Backlink, GraphData, NoteQuery, Preferences } from '../types';
 
-// 模拟存储只存在于浏览器内存。刷新恢复示例；这里不创建服务端或数据库。
-let noteStore = structuredClone(notes);
-const treeStore = structuredClone(notebooks);
-let preferenceStore = structuredClone(preferences);
-const respond = async <T,>(data: T): Promise<T> => {
-  await new Promise(resolve => setTimeout(resolve, 100));
-  // 返回副本，避免组件意外直接修改 mock 存储。
-  return structuredClone(data);
-};
-
-/** GET /api/notebooks；参数：无；返回：TreeNode[]（递归笔记本/文件夹/文档树）。 */
-export async function getNotebooks(): Promise<TreeNode[]> { return respond(treeStore); }
-
-/** GET /api/notes?query=&tag=；参数：NoteQuery；返回：Note[]。 */
-export async function listNotes({ query = '', tag = '' }: NoteQuery = {}): Promise<Note[]> {
-  const term = query.trim().toLocaleLowerCase();
-  return respond(noteStore.filter(note => (!term || (note.title + note.content).toLocaleLowerCase().includes(term)) && (!tag || note.tags.includes(tag))));
-}
-
-/** GET /api/notes/:id；路径参数：id:string；返回：Note；不存在则抛错。 */
-export async function getNote(id: string): Promise<Note> {
-  const note = noteStore.find(item => item.id === id);
-  if (!note) throw new Error('这篇笔记不存在，请从文件树重新选择。');
-  return respond(note);
-}
-
-/** PATCH /api/notes/:id；参数：id、{title:string,content:string}；返回：更新后的 Note。 */
-export async function updateNote(id: string, patch: Pick<Note, 'title' | 'content'>): Promise<Note> {
-  const note = noteStore.find(item => item.id === id);
-  if (!note) throw new Error('笔记不存在，无法保存。');
-  if (!patch.title.trim()) throw new Error('标题不能为空。');
-  Object.assign(note, patch, { title: patch.title.trim(), updatedAt: new Date().toISOString() });
-  function rename(nodes: TreeNode[]) {
-    for (const node of nodes) {
-      if (node.kind === 'note') { if (node.noteId === id) node.name = note!.title; }
-      else rename(node.children);
-    }
+// 笔记只通过真实 HTTP 读写；失败会抛错，不退回示例数据。
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', ...options.headers } });
+  } catch {
+    throw new Error('无法连接笔记服务，请确认后端已启动。');
   }
-  rename(treeStore);
-  return respond(note);
+  // 204 没有响应体，不能调用 response.json()。
+  if (response.status === 204) return undefined as T;
+  let body: unknown;
+  try { body = await response.json(); }
+  catch { throw new Error('笔记服务返回了无法读取的响应。'); }
+  if (!response.ok) {
+    const detail = body && typeof body === 'object' && 'detail' in body ? body.detail : null;
+    const message = typeof detail === 'string' ? detail : Array.isArray(detail)
+      ? detail.map(item => typeof item?.msg === 'string' ? item.msg : '输入格式有误').join('；') : '';
+    throw new Error(message || `笔记请求失败（${response.status}）`);
+  }
+  return body as T;
 }
 
-/** POST /api/notes；参数：{title:string}；返回：Note；新记录放入收件箱。 */
+/** 当前由真实笔记的 notebook 字段分组；不调用尚未实现的 /api/notebooks。 */
+export function notesToTree(notes: Note[]): TreeNode[] {
+  const groups = new Map<string, TreeNode[]>();
+  groups.set('收件箱', []);
+  for (const note of notes) {
+    if (!groups.has(note.notebook)) groups.set(note.notebook, []);
+    groups.get(note.notebook)!.push({ id: 'tree-' + note.id, name: note.title, kind: 'note', noteId: note.id });
+  }
+  return [...groups].map(([name, children]) => ({ id: 'notebook-' + name, name, kind: 'notebook', children }));
+}
+
+/** 从 GET /api/notes 的真实结果构造 TreeNode[]；尚无独立目录管理。 */
+export async function getNotebooks(): Promise<TreeNode[]> { return notesToTree(await listNotes()); }
+
+/** GET /api/notes；查询忽略空白，各字符按顺序匹配标题或正文，可隔字；tag仍需匹配。 */
+export async function listNotes({ query = '', tag = '' }: NoteQuery = {}): Promise<Note[]> {
+  const notes = await request<Note[]>('/api/notes');
+  const characters = [...query.replace(/\s+/gu, '').toLocaleLowerCase()];
+  function matchesInOrder(text: string): boolean {
+    if (characters.length === 0) return true;
+    let next = 0;
+    for (const character of text.toLocaleLowerCase()) {
+      if (character === characters[next]) next++;
+      if (next === characters.length) return true;
+    }
+    return false;
+  }
+  return notes.filter(note => (matchesInOrder(note.content) || matchesInOrder(note.title)) && (!tag || note.tags.includes(tag)));
+}
+
+/** GET /api/notes/:id；不存在时将后端404显示给页面。 */
+export async function getNote(id: string): Promise<Note> {
+  return request<Note>('/api/notes/' + encodeURIComponent(id));
+}
+
+/** PATCH /api/notes/:id；提交标题与正文，以服务器返回值作为已保存状态。 */
+export async function updateNote(id: string, patch: Pick<Note, 'title' | 'content'>): Promise<Note> {
+  return request<Note>('/api/notes/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(patch) });
+}
+
+/** POST /api/notes；只提交标题，由后端生成ID、时间与其余默认字段。 */
 export async function createNote(input: { title: string }): Promise<Note> {
-  if (!input.title.trim()) throw new Error('标题不能为空。');
-  const note: Note = { id: crypto.randomUUID(), title: input.title.trim(), content: '# ' + input.title.trim() + '\n\n在这里开始书写。', tags: [], notebook: '收件箱', updatedAt: new Date().toISOString() };
-  noteStore = [...noteStore, note];
-  const inbox = treeStore.find(node => node.id === 'inbox-folder');
-  if (inbox && inbox.kind !== 'note') inbox.children.push({ id: 'tree-' + note.id, name: note.title, kind: 'note', noteId: note.id });
-  return respond(note);
+  return request<Note>('/api/notes', { method: 'POST', body: JSON.stringify(input) });
 }
 
-/** GET /api/notes/:id/backlinks；参数：id:string；返回：Backlink[]。 */
-export async function getBacklinks(id: string): Promise<Backlink[]> {
-  const links = (incomingLinks[id] ?? []).flatMap(link => {
-    const source = noteStore.find(note => note.id === link.source);
-    return source ? [{ noteId: source.id, title: source.title, excerpt: link.excerpt, notebook: source.notebook }] : [];
-  });
-  return respond(links);
+/** DELETE /api/notes/:id；成功204无响应体，失败保留后端错误。 */
+export async function deleteNote(id: string): Promise<void> {
+  await request<void>('/api/notes/' + encodeURIComponent(id), { method: 'DELETE' });
 }
 
-/** GET /api/notes/:id/graph；参数：id:string；返回：{nodes:GraphNode[],edges:{source,target}[]}。 */
+/** 反链接口待接入；空列表仅为占位，页面明确说明，不能作为无反链的分析结论。 */
+export async function getBacklinks(_id: string): Promise<Backlink[]> { return []; }
+
+/** 暂时只显示从真实接口读取的中心笔记，不生成模拟关联。 */
 export async function getGraph(id: string): Promise<GraphData> {
-  const center = await getNote(id);
-  const links = await getBacklinks(id);
-  return respond({ nodes: [{ id: center.id, title: center.title }, ...links.map(link => ({ id: link.noteId, title: link.title }))], edges: links.map(link => ({ source: link.noteId, target: id })) });
+  const note = await getNote(id);
+  return { nodes: [{ id: note.id, title: note.title }], edges: [] };
 }
 
-/** GET /api/tags；参数：无；返回：{name:string,count:number}[]。 */
+/** 从 GET /api/notes 的真实 tags 聚合；尚未实现独立标签API或标签编辑。 */
 export async function getTags(): Promise<{ name: string; count: number }[]> {
-  const names = [...new Set(noteStore.flatMap(note => note.tags))];
-  return respond(names.map(name => ({ name, count: noteStore.filter(note => note.tags.includes(name)).length })));
+  const notes = await listNotes();
+  const names = [...new Set(notes.flatMap(note => note.tags))];
+  return names.map(name => ({ name, count: notes.filter(note => note.tags.includes(name)).length }));
 }
 
-/** GET /api/preferences；参数：无；返回：Preferences。 */
-export async function getPreferences(): Promise<Preferences> { return respond(preferenceStore); }
-
-/** PATCH /api/preferences；参数：Preferences；返回：Preferences。 */
+// 偏好仅保留在当前页面会话；云同步继续明确标为模拟。
+let preferenceStore = structuredClone(preferences);
+export async function getPreferences(): Promise<Preferences> { return structuredClone(preferenceStore); }
 export async function updatePreferences(input: Preferences): Promise<Preferences> {
   preferenceStore = { ...input, fontSize: Math.min(22, Math.max(14, input.fontSize)) };
-  return respond(preferenceStore);
+  return structuredClone(preferenceStore);
 }
-
-/** POST /api/sync；参数：无；返回：{mode:'mock',syncedAt:string}，仅模拟，不连接云端。 */
-export async function syncNotes(): Promise<{ mode: 'mock'; syncedAt: string }> { return respond({ mode: 'mock', syncedAt: new Date().toISOString() }); }
-
+export async function syncNotes(): Promise<{ mode: 'mock'; syncedAt: string }> {
+  return { mode: 'mock', syncedAt: new Date().toISOString() };
+}
 ````
 
 ## src/components/BacklinksPanel.tsx
@@ -1848,15 +1855,14 @@ export function BacklinksPanel({ noteId }: { noteId?: string }) {
     <div className={styles.backlinkHeader}><span>文档关联</span><Link2 size={16} /></div>
     {!noteId ? <p className={styles.panelHint}>打开一篇笔记，查看它与其他想法的联系。</p> : loading ? <p className={styles.panelHint}>正在寻找连接…</p> : error ? <p className={styles.panelHint} role="alert">{error}</p> : <>
       <button className={styles.backlinkSection} onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed}><span><ChevronDown size={14} style={{ transform: collapsed ? 'rotate(-90deg)' : undefined }} />反向链接</span><b>{links.length}</b></button>
-      <div hidden={collapsed}>{links.map(link => <Link className={styles.backlinkCard} key={link.noteId} to={`/notes/${link.noteId}`}><div><strong>{link.title}</strong><ArrowUpRight size={14} /></div><p>{link.excerpt}</p><small>{link.notebook}</small></Link>)}{!links.length && <p className={styles.panelHint}>还没有其他笔记链接到这里。</p>}</div>
-      <div className={styles.graphHeading}><Network size={14} /><span>局部关系图</span><small>MOCK</small></div>
+      <div hidden={collapsed}>{links.map(link => <Link className={styles.backlinkCard} key={link.noteId} to={`/notes/${link.noteId}`}><div><strong>{link.title}</strong><ArrowUpRight size={14} /></div><p>{link.excerpt}</p><small>{link.notebook}</small></Link>)}{!links.length && <p className={styles.panelHint}>反链分析尚未接入，当前仅显示笔记本身。</p>}</div>
+      <div className={styles.graphHeading}><Network size={14} /><span>局部关系图</span><small>待接入</small></div>
       {graph && <RelationshipGraph graph={graph} current={noteId} />}
       <p className={styles.graphHint}>点击节点，继续探索一个想法。</p>
       <div className={styles.connectionNote}><Link2 size={17} /><p>每一次连接，<br />都是一次新的理解。</p></div>
     </>}
   </>;
 }
-
 ````
 
 ## src/components/DesktopLayout.tsx
@@ -1882,7 +1888,7 @@ export function DesktopLayout() {
   const [toast, setToast] = useState('');
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [lastNote, setLastNote] = useState('welcome');
+  const [lastNote, setLastNote] = useState('');
   const match = location.pathname.match(/^\/notes\/([^/]+)$/);
   const noteId = match?.[1];
   useEffect(() => { if (noteId) setLastNote(noteId); }, [noteId]);
@@ -1906,7 +1912,7 @@ export function DesktopLayout() {
   }
   async function create() {
     setCreating(true);
-    try { const note = await store.create(); navigate(`/notes/${note.id}`); setToast('已在收件箱创建示例笔记'); }
+    try { const note = await store.create(); navigate(`/notes/${note.id}`); setToast('已在收件箱创建笔记'); }
     catch (error) { setToast(error instanceof Error ? error.message : '创建失败'); }
     finally { setCreating(false); }
   }
@@ -1915,19 +1921,19 @@ export function DesktopLayout() {
     <header className={styles.toolbar}>
       <div className={styles.toolbarLeft}><div className={styles.trafficLights} aria-hidden="true"><i /><i /><i /></div><span className={styles.appName}>岩笺<span>Notes</span></span><IconButton icon={PanelLeft} label={left ? '隐藏文件树' : '显示文件树'} aria-pressed={left} onClick={() => setLeft(!left)} /></div>
       <button className={styles.quickSearch} onClick={() => navigate('/search')}><Search size={15} /><span>搜索你的笔记</span><kbd>⌘ K</kbd></button>
-      <div className={styles.toolbarRight}><span className={styles.mockBadge}>MOCK 工作区</span><IconButton icon={RefreshCw} label="模拟同步" disabled={busy} className={`${styles.iconButton} ${busy ? styles.spinning : ''}`} onClick={sync} /><IconButton icon={PanelRight} label={right ? '隐藏反链面板' : '显示反链面板'} aria-pressed={right} onClick={() => setRight(!right)} /><IconButton icon={Settings} label="打开设置" onClick={() => navigate('/settings')} /></div>
+      <div className={styles.toolbarRight}><span className={styles.mockBadge}>本机笔记</span><IconButton icon={RefreshCw} label="模拟同步" disabled={busy} className={`${styles.iconButton} ${busy ? styles.spinning : ''}`} onClick={sync} /><IconButton icon={PanelRight} label={right ? '隐藏反链面板' : '显示反链面板'} aria-pressed={right} onClick={() => setRight(!right)} /><IconButton icon={Settings} label="打开设置" onClick={() => navigate('/settings')} /></div>
     </header>
     {/* 组件：四栏布局。侧栏隐藏后不占宽度，中间区域 flex:1 自动扩展。 */}
     <div className={styles.body}>
       <nav className={styles.rail} aria-label="功能模块"><div className={styles.railLogo}><Layers size={22} strokeWidth={1.5} /></div>
-        {modules.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to === '/notes' ? `/notes/${lastNote}` : to} title={label} aria-label={label} className={() => `${styles.railButton} ${location.pathname.startsWith(to) ? styles.railSelected : ''}`} aria-current={location.pathname.startsWith(to) ? 'page' : undefined}><Icon size={20} strokeWidth={1.6} /></NavLink>)}
+        {modules.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to === '/notes' ? lastNote && store.notes.some(note => note.id === lastNote) ? `/notes/${lastNote}` : '/notes' : to} title={label} aria-label={label} className={() => `${styles.railButton} ${location.pathname.startsWith(to) ? styles.railSelected : ''}`} aria-current={location.pathname.startsWith(to) ? 'page' : undefined}><Icon size={20} strokeWidth={1.6} /></NavLink>)}
         <div className={styles.railBottom}><NavLink to="/settings" aria-label="设置" title="设置" className={({ isActive }) => `${styles.railButton} ${isActive ? styles.railSelected : ''}`}><Settings size={20} strokeWidth={1.6} /></NavLink><Link className={styles.avatar} to="/settings" title="工作区设置">R</Link></div>
       </nav>
       <aside className={`${styles.sidebar} ${left ? '' : styles.panelHidden}`} aria-label="文件树面板" aria-hidden={!left} inert={!left}>
         <div className={styles.workspaceName}><span className={styles.workspaceIcon}>R</span><div><strong>Rock 的知识空间</strong><small>给想法一个安静的地方</small></div><ChevronDown size={13} aria-hidden="true" /></div>
-        <div className={styles.sidebarHeading}><span>笔记本</span><IconButton icon={Plus} label="新建笔记" disabled={creating || store.loading} onClick={create} /></div>
-        {store.loading ? <p className={styles.panelHint}>正在读取笔记本…</p> : store.error ? <p role="alert" className={styles.panelHint}>{store.error}</p> : <FileTree nodes={store.tree} />}
-        <div className={styles.sidebarFooter}><span><Check size={13} />{store.notes.length} 篇示例笔记</span><small>仅当前浏览器会话</small></div>
+        <div className={styles.sidebarHeading}><span>笔记本</span><IconButton icon={Plus} label="新建笔记" disabled={creating || store.loading || !!store.error} onClick={create} /></div>
+        {store.loading ? <p className={styles.panelHint}>正在读取笔记本…</p> : store.error ? <div className={styles.panelHint}><p role="alert">{store.error}</p><button onClick={() => { void store.refresh().catch(() => {}); }}>重新连接</button></div> : <FileTree nodes={store.tree} />}
+        <div className={styles.sidebarFooter}><span><Check size={13} />{store.notes.length} 篇笔记</span><small>保存到本机数据库</small></div>
       </aside>
       <main className={styles.main} id="main-content"><Outlet /></main>
       <aside className={`${styles.backlinks} ${right ? '' : styles.panelHidden}`} aria-label="反链面板" aria-hidden={!right} inert={!right}><BacklinksPanel noteId={noteId} /></aside>
@@ -1935,7 +1941,6 @@ export function DesktopLayout() {
     {toast && <div className={styles.toast} role="status">{toast}</div>}
   </div></div>;
 }
-
 ````
 
 ## src/components/FileTree.tsx
@@ -1967,7 +1972,6 @@ function TreeItem({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
 export function FileTree({ nodes }: { nodes: TreeNode[] }) {
   return <nav aria-label="笔记本与文档"><ul className={styles.treeList}>{nodes.map(node => <TreeItem key={node.id} node={node} />)}</ul></nav>;
 }
-
 ````
 
 ## src/components/IconButton.tsx
@@ -1981,7 +1985,6 @@ import styles from '../styles/Desktop.module.css';
 export function IconButton({ icon: Icon, label, active = false, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { icon: LucideIcon; label: string; active?: boolean }) {
   return <button type="button" className={`${styles.iconButton} ${active ? styles.iconActive : ''}`} title={label} aria-label={label} {...props}><Icon size={18} strokeWidth={1.6} /></button>;
 }
-
 ````
 
 ## src/components/MarkdownPreview.tsx
@@ -2018,7 +2021,6 @@ export function MarkdownPreview({ content }: { content: string }) {
   }
   return <div className={styles.prose}>{blocks}</div>;
 }
-
 ````
 
 ## src/main.tsx
@@ -2035,7 +2037,6 @@ import './styles/global.css';
 createRoot(document.getElementById('root')!).render(
   <StrictMode><BrowserRouter><NotesProvider><App /></NotesProvider></BrowserRouter></StrictMode>
 );
-
 ````
 
 ## src/mocks/data.ts
@@ -2080,15 +2081,14 @@ export const incomingLinks: Record<string, { source: string; excerpt: string }[]
   python: [{ source: 'weekly', excerpt: '本周整理了 Python 学习笔记。' }]
 };
 export const preferences: Preferences = { fontSize: 16, showLineNumbers: false };
-
 ````
 
 ## src/pages/EditorPage.tsx
 
 ````tsx
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { BookOpen, ChevronRight, Pencil, Eye, Save, FileText } from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { BookOpen, ChevronRight, Pencil, Eye, Save, FileText, Trash2 } from 'lucide-react';
 import { getNote } from '../api';
 import type { Note } from '../types';
 import { useNotes } from '../state/NotesContext';
@@ -2099,11 +2099,13 @@ import styles from '../styles/Desktop.module.css';
 export function EditorPage() { const { noteId = '' } = useParams(); return <Editor key={noteId} id={noteId} />; }
 function Editor({ id }: { id: string }) {
   const store = useNotes();
+  const navigate = useNavigate();
   const [note, setNote] = useState<Note | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState('');
   useEffect(() => {
     let cancelled = false;
@@ -2115,11 +2117,20 @@ function Editor({ id }: { id: string }) {
   const draft = note ? store.drafts[id] ?? { title: note.title, content: note.content } : null;
   const dirty = !!(draft && note && (draft.title !== note.title || draft.content !== note.content));
   async function save() {
-    if (!draft || !note || saving || !dirty) return;
+    if (!draft || !note || saving || deleting || !dirty) return;
     setSaving(true); setMessage('');
-    try { await store.save(id, draft); setNote({ ...note, ...draft, title: draft.title.trim(), updatedAt: new Date().toISOString() }); setMessage('已模拟保存 · 刷新后恢复示例数据'); }
+    try { const saved = await store.save(id, draft); setNote(saved); setMessage('已保存到本机数据库'); }
     catch (cause) { setMessage(cause instanceof Error ? cause.message : '保存失败，草稿仍保留'); }
     finally { setSaving(false); }
+  }
+  async function remove() {
+    if (!note || !draft || saving || deleting) return;
+    const warning = dirty ? '\n未保存的草稿也会一并删除。' : '';
+    if (!window.confirm(`永久删除“${draft.title || note.title}”？${warning}\n此操作无法撤销。`)) return;
+    setDeleting(true); setMessage('');
+    try { await store.remove(id); navigate('/notes', { replace: true }); }
+    catch (cause) { setMessage(cause instanceof Error ? cause.message : '删除失败，笔记和草稿仍保留'); }
+    finally { setDeleting(false); }
   }
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
@@ -2130,29 +2141,54 @@ function Editor({ id }: { id: string }) {
   });
   useEffect(() => { document.title = (draft?.title || '笔记') + ' · 岩笺'; }, [draft?.title]);
   if (loading) return <div className={styles.pageState} role="status">正在打开笔记…</div>;
-  if (error || !note || !draft) return <div className={styles.pageState} role="alert"><h1>无法打开笔记</h1><p>{error}</p><Link to="/notes/welcome">返回开始页</Link></div>;
+  if (error || !note || !draft) return <div className={styles.pageState} role="alert"><h1>无法打开笔记</h1><p>{error}</p><Link to="/notes">返回开始页</Link></div>;
   return <>
-    <div className={styles.documentBar}><span><BookOpen size={14} />{note.notebook}<ChevronRight size={12} /><span>{draft.title}</span></span><span className={styles.documentStatus}><i />{dirty ? '有未保存草稿' : '当前会话'}<span className={styles.modeBadge}>MOCK</span></span></div>
+    <div className={styles.documentBar}><span><BookOpen size={14} />{note.notebook}<ChevronRight size={12} /><span>{draft.title}</span></span><span className={styles.documentStatus}><i />{dirty ? '有未保存草稿' : '已保存'}<span className={styles.modeBadge}>本机</span></span></div>
     <div className={styles.editorScroll}>
       <article className={styles.document} style={{ fontSize: store.preferences.fontSize }}>
-        <div className={styles.documentKicker}><FileText size={13} /><span>一页笔记 · 一个想法</span><div className={styles.editorActions}><button onClick={() => setEditing(!editing)} aria-pressed={editing}>{editing ? <Eye size={14} /> : <Pencil size={14} />}{editing ? '预览' : '编辑'}</button><button onClick={() => void save()} disabled={!dirty || saving}><Save size={14} />{saving ? '保存中' : '保存'}</button></div></div>
+        <div className={styles.documentKicker}><FileText size={13} /><span>一页笔记 · 一个想法</span><div className={styles.editorActions}><button onClick={() => setEditing(!editing)} disabled={saving || deleting} aria-pressed={editing}>{editing ? <Eye size={14} /> : <Pencil size={14} />}{editing ? '预览' : '编辑'}</button><button onClick={() => void save()} disabled={!dirty || saving || deleting}><Save size={14} />{saving ? '保存中' : '保存'}</button><button onClick={() => void remove()} disabled={saving || deleting}><Trash2 size={14} />{deleting ? '删除中' : '删除笔记'}</button></div></div>
         {/* 标题单独编辑；正文保留 Markdown 一级标题，但预览中弱化重复标题。 */}
-        {editing ? <input aria-label="笔记标题" className={styles.titleInput} value={draft.title} disabled={saving} onChange={event => store.patchDraft(note, { title: event.target.value })} /> : <h1>{draft.title}</h1>}
+        {editing ? <input aria-label="笔记标题" className={styles.titleInput} value={draft.title} disabled={saving || deleting} onChange={event => store.patchDraft(note, { title: event.target.value })} /> : <h1>{draft.title}</h1>}
         <div className={styles.noteMeta}><span>更新于 {new Date(note.updatedAt).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', timeZone: 'Asia/Shanghai' })}</span><span className={styles.metaDot}>·</span><span>{draft.content.replace(/\s/g, '').length} 字符</span>{note.tags.map(tag => <Link key={tag} className={styles.tag} to={'/tags?tag=' + encodeURIComponent(tag)}>#{tag}</Link>)}</div>
         {message && <p className={styles.saveMessage} role="status">{message}</p>}
-        {editing ? <div className={styles.sourceEditor}>{store.preferences.showLineNumbers && <pre className={styles.lineNumbers} aria-hidden="true">{draft.content.split('\n').map((_, index) => index + 1).join('\n')}</pre>}<textarea aria-label="笔记正文" spellCheck={false} value={draft.content} disabled={saving} onChange={event => store.patchDraft(note, { content: event.target.value })} /></div> : <MarkdownPreview content={draft.content} />}
+        {editing ? <div className={styles.sourceEditor}>{store.preferences.showLineNumbers && <pre className={styles.lineNumbers} aria-hidden="true">{draft.content.split('\n').map((_, index) => index + 1).join('\n')}</pre>}<textarea aria-label="笔记正文" spellCheck={false} value={draft.content} disabled={saving || deleting} onChange={event => store.patchDraft(note, { content: event.target.value })} /></div> : <MarkdownPreview content={draft.content} />}
         <div className={styles.documentEnd}><span />留一点空白，给下一个想法<span /></div>
       </article>
     </div>
   </>;
 }
+````
 
+## src/pages/NotesHome.tsx
+
+````tsx
+import { useState } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { useNotes } from '../state/NotesContext';
+import styles from '../styles/Desktop.module.css';
+
+export function NotesHome() {
+  const store = useNotes();
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function create() {
+    setBusy(true); setError('');
+    try { const note = await store.create(); navigate('/notes/' + note.id); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : '创建失败'); }
+    finally { setBusy(false); }
+  }
+  if (store.loading) return <div className={styles.pageState} role="status">正在读取本机笔记…</div>;
+  if (store.error) return <section className={styles.utilityPage}><h1>无法读取笔记</h1><p role="alert">{store.error}</p><button onClick={() => { void store.refresh().catch(() => {}); }}>重新连接</button></section>;
+  if (store.notes.length) return <Navigate to={'/notes/' + store.notes[0].id} replace />;
+  return <section className={styles.utilityPage}><p className={styles.eyebrow}>YOUR FIRST NOTE</p><h1>从第一篇笔记开始</h1><p className={styles.subtitle}>写下一个想法，保存后会留在本机数据库里。</p><div className={styles.editorActions}><button disabled={busy} onClick={() => void create()}>{busy ? '正在创建…' : '创建第一篇笔记'}</button></div>{error && <p role="alert">{error}</p>}</section>;
+}
 ````
 
 ## src/pages/UtilityPages.tsx
 
 ````tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Search, Hash, ArrowUpRight, SlidersHorizontal, Monitor } from 'lucide-react';
 import { listNotes, getTags } from '../api';
@@ -2166,6 +2202,13 @@ function Results({ notes }: { notes: Note[] }) {
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
   const query = params.get('q') ?? '';
+  // 拼音组合期间先同步本地输入，选词结束后再更新URL，避免路由打断输入法。
+  const [input, setInput] = useState(query);
+  const composing = useRef(false);
+  useEffect(() => { if (!composing.current) setInput(query); }, [query]);
+  function publish(value: string) {
+    setParams(value ? { q: value } : {}, { replace: true });
+  }
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -2174,7 +2217,15 @@ export function SearchPage() {
     listNotes({ query }).then(value => { if (!cancelled) setNotes(value); }).catch((cause: unknown) => { if (!cancelled) setError(cause instanceof Error ? cause.message : '搜索失败'); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [query]);
-  return <section className={styles.utilityPage}><p className={styles.eyebrow}>FIND AN IDEA</p><h1>搜索你的知识</h1><p className={styles.subtitle}>一个词，也许就是一个新连接的起点。</p><label className={styles.searchInput}><Search size={19} /><input autoFocus aria-label="搜索笔记" placeholder="搜索标题或正文…" value={query} onChange={event => setParams(event.target.value ? { q: event.target.value } : {}, { replace: true })} /></label><p className={styles.resultCount} role="status">{loading ? '正在搜索…' : error || `找到 ${notes.length} 篇笔记`}</p>{!loading && !error && <><Results notes={notes} />{!notes.length && <p className={styles.emptyText}>没有匹配的笔记，换一个关键词试试。</p>}</>}</section>;
+  return <section className={styles.utilityPage}><p className={styles.eyebrow}>FIND AN IDEA</p><h1>搜索你的知识</h1><p className={styles.subtitle}>按输入顺序查找，忽略空格，中间可以隔着其他字。</p><label className={styles.searchInput}><Search size={19} /><input autoFocus aria-label="搜索笔记" placeholder="搜索标题或正文…" value={input} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={event => {
+    composing.current = false;
+    const value = event.currentTarget.value;
+    setInput(value); publish(value);
+  }} onChange={event => {
+    const value = event.target.value;
+    setInput(value);
+    if (!composing.current) publish(value);
+  }} /></label><p className={styles.resultCount} role="status">{loading ? '正在搜索…' : error || `找到 ${notes.length} 篇笔记`}</p>{!loading && !error && <><Results notes={notes} />{!notes.length && <p className={styles.emptyText}>没有匹配的笔记，换一个关键词试试。</p>}</>}</section>;
 }
 export function TagsPage() {
   const [params, setParams] = useSearchParams();
@@ -2200,16 +2251,15 @@ export function SettingsPage() {
     catch (cause) { setStatus(cause instanceof Error ? cause.message : '设置保存失败'); }
     finally { setBusy(false); }
   }
-  return <section className={styles.utilityPage}><p className={styles.eyebrow}>MAKE IT YOURS</p><h1>你的书写空间</h1><p className={styles.subtitle}>少一点干扰，多一点专注。</p><div className={styles.settingsCard}><h2><SlidersHorizontal size={18} />编辑器</h2><label>正文字号<select aria-label="正文字号" disabled={busy} value={preferences.fontSize} onChange={event => void change({ ...preferences, fontSize: Number(event.target.value) })}>{[14, 16, 18, 20, 22].map(size => <option key={size} value={size}>{size} px</option>)}</select></label><label>源码编辑时显示行号<input type="checkbox" checked={preferences.showLineNumbers} disabled={busy} onChange={event => void change({ ...preferences, showLineNumbers: event.target.checked })} /></label></div><div className={styles.settingsCard}><h2><Monitor size={18} />关于工作区</h2><p>岩笺 · React + TypeScript 前端原型</p><p>所有笔记、反链和同步均为 mock。模拟保存只保留到刷新前，没有连接服务器、云端或数据库。</p></div><p role="status" className={styles.saveMessage}>{status}</p></section>;
+  return <section className={styles.utilityPage}><p className={styles.eyebrow}>MAKE IT YOURS</p><h1>你的书写空间</h1><p className={styles.subtitle}>少一点干扰，多一点专注。</p><div className={styles.settingsCard}><h2><SlidersHorizontal size={18} />编辑器</h2><label>正文字号<select aria-label="正文字号" disabled={busy} value={preferences.fontSize} onChange={event => void change({ ...preferences, fontSize: Number(event.target.value) })}>{[14, 16, 18, 20, 22].map(size => <option key={size} value={size}>{size} px</option>)}</select></label><label>源码编辑时显示行号<input type="checkbox" checked={preferences.showLineNumbers} disabled={busy} onChange={event => void change({ ...preferences, showLineNumbers: event.target.checked })} /></label></div><div className={styles.settingsCard}><h2><Monitor size={18} />关于工作区</h2><p>岩笺 · 本机笔记</p><p>笔记已连接本机服务和数据库。目录按笔记本分组，搜索和标签筛选在前端完成；反链分析待接入，云同步仍为模拟，偏好仅在当前会话生效。</p></div><p role="status" className={styles.saveMessage}>{status}</p></section>;
 }
-export function NotFoundPage() { return <section className={styles.utilityPage}><h1>没有找到这个页面</h1><p>这个地址没有对应的功能。</p><Link to="/notes/welcome">返回笔记</Link></section>; }
-
+export function NotFoundPage() { return <section className={styles.utilityPage}><h1>没有找到这个页面</h1><p>这个地址没有对应的功能。</p><Link to="/notes">返回笔记</Link></section>; }
 ````
 
 ## src/state/NotesContext.tsx
 
 ````tsx
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import * as api from '../api';
 import type { Note, TreeNode, Preferences } from '../types';
 
@@ -2218,30 +2268,34 @@ interface Store {
   tree: TreeNode[]; notes: Note[]; loading: boolean; error: string;
   drafts: Record<string, Draft>; preferences: Preferences;
   patchDraft: (note: Note, patch: Partial<Draft>) => void;
-  save: (id: string, draft: Draft) => Promise<void>;
+  save: (id: string, draft: Draft) => Promise<Note>;
   create: () => Promise<Note>;
+  remove: (id: string) => Promise<void>;
   refresh: () => Promise<void>;
   setPreferences: (value: Preferences) => Promise<void>;
 }
 const Context = createContext<Store | null>(null);
+const latestFirst = (a: Note, b: Note) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id);
 
-// 父级状态不随子路由卸载；未保存草稿按文档 id 分开，避免切换文档丢失输入。
+// 父级状态保留各文档草稿；笔记和文件树都来自同一份服务器数据。
 export function NotesProvider({ children }: { children: ReactNode }) {
-  const [tree, setTree] = useState<TreeNode[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
+  const tree = useMemo(() => api.notesToTree(notes), [notes]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [preferences, setPreferenceState] = useState<Preferences>({ fontSize: 16, showLineNumbers: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   async function refresh() {
-    const [nextTree, nextNotes] = await Promise.all([api.getNotebooks(), api.listNotes()]);
-    setTree(nextTree); setNotes(nextNotes);
+    setLoading(true); setError('');
+    try { setNotes(await api.listNotes()); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : '笔记加载失败'); throw cause; }
+    finally { setLoading(false); }
   }
   useEffect(() => {
     let cancelled = false;
-    Promise.all([api.getNotebooks(), api.listNotes(), api.getPreferences()]).then(([nextTree, nextNotes, prefs]) => {
-      if (!cancelled) { setTree(nextTree); setNotes(nextNotes); setPreferenceState(prefs); }
-    }).catch((cause: unknown) => { if (!cancelled) setError(cause instanceof Error ? cause.message : '资料加载失败'); })
+    Promise.all([api.listNotes(), api.getPreferences()]).then(([nextNotes, prefs]) => {
+      if (!cancelled) { setNotes(nextNotes); setPreferenceState(prefs); }
+    }).catch((cause: unknown) => { if (!cancelled) setError(cause instanceof Error ? cause.message : '笔记加载失败'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -2249,30 +2303,39 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     setDrafts(previous => ({ ...previous, [note.id]: { ...(previous[note.id] ?? { title: note.title, content: note.content }), ...patch } }));
   }
   async function save(id: string, draft: Draft) {
-    await api.updateNote(id, draft);
-    // 仅清理刚保存的版本；等待响应时的新输入仍然保留。
+    const saved = await api.updateNote(id, draft);
+    setNotes(previous => previous.map(note => note.id === id ? saved : note).sort(latestFirst));
+    // 仅清理已提交的版本，失败或等待响应时的新输入仍保留。
     setDrafts(previous => {
       if (previous[id]?.title !== draft.title || previous[id]?.content !== draft.content) return previous;
       const next = { ...previous }; delete next[id]; return next;
     });
-    await refresh();
+    return saved;
   }
-  async function create() { const note = await api.createNote({ title: '未命名笔记' }); await refresh(); return note; }
+  async function create() {
+    const note = await api.createNote({ title: '未命名笔记' });
+    setNotes(previous => [...previous, note].sort(latestFirst));
+    return note;
+  }
+  async function remove(id: string) {
+    await api.deleteNote(id);
+    // 服务器确认删除后再移除笔记和草稿；失败时保留用户输入。
+    setNotes(previous => previous.filter(note => note.id !== id));
+    setDrafts(previous => { const next = { ...previous }; delete next[id]; return next; });
+  }
   async function setPreferences(value: Preferences) {
-    // 控件立即响应用户点击；若接口失败，恢复原值并交给页面显示错误。
     const previous = preferences;
     setPreferenceState(value);
     try { setPreferenceState(await api.updatePreferences(value)); }
     catch (cause) { setPreferenceState(previous); throw cause; }
   }
-  return <Context.Provider value={{ tree, notes, drafts, preferences, loading, error, patchDraft, save, create, refresh, setPreferences }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ tree, notes, drafts, preferences, loading, error, patchDraft, save, create, remove, refresh, setPreferences }}>{children}</Context.Provider>;
 }
 export function useNotes() {
   const store = useContext(Context);
   if (!store) throw new Error('useNotes 必须在 NotesProvider 内使用');
   return store;
 }
-
 ````
 
 ## src/styles/Desktop.module.css
@@ -2336,7 +2399,6 @@ export function useNotes() {
 @media(max-width:900px) { .backlinks { position:absolute; top:58px; right:0; bottom:0; z-index:5; background:#f8f9fbf5; box-shadow:-8px 0 30px #21334b10; }.documentStatus { display:none!important; } }
 @media(max-width:759px) { .desktop { padding:10px; }.window { height:calc(100dvh - 20px); min-height:500px; }.sidebar { position:absolute; left:56px; top:58px; bottom:0; z-index:5; background:#f4f5f8f5; box-shadow:8px 0 30px #21334b10; }.toolbar { padding:0 11px; }.trafficLights { gap:5px; margin-right:0; }.trafficLights i { width:8px; height:8px; }.appName span { display:none; }.toolbarLeft { gap:8px; }.quickSearch { width:30px; max-width:none; padding:6px; border:0; background:transparent; }.quickSearch span,.quickSearch kbd { display:none; }.toolbarRight { gap:1px; }.document,.utilityPage { padding:30px 22px; }.documentBar { padding:0 20px; }.document h1 { font-size:25px; }.noteMeta { gap:6px; }.documentKicker { flex-wrap:wrap; }.editorActions { margin-left:0; }.backlinks { width:min(280px,calc(100% - 56px)); } }
 @media(prefers-reduced-motion:reduce) { .spinning svg { animation:none; } }
-
 ````
 
 ## src/styles/global.css
@@ -2357,7 +2419,6 @@ button { color:inherit; }
 ::selection { background:#d0e3f7; }
 ::-webkit-scrollbar { width:6px; height:6px; }
 ::-webkit-scrollbar-thumb { background:#cbd0d7; border-radius:8px; }
-
 ````
 
 ## src/types.ts
@@ -2383,115 +2444,229 @@ export interface GraphNode { id: string; title: string }
 export interface GraphData { nodes: GraphNode[]; edges: { source: string; target: string }[] }
 export interface Preferences { fontSize: number; showLineNumbers: boolean }
 export interface NoteQuery { query?: string; tag?: string }
-
 ````
 
 ## src/vite-env.d.ts
 
 ````typescript
 /// <reference types="vite/client" />
+````
 
+## tests/delete.spec.ts
+
+````typescript
+import { test, expect } from './fixtures';
+
+test('取消删除不发请求；确认后204、清理文件树并持久化，等待时禁止重复操作', async ({ page, request, backend }) => {
+  const keep = await (await request.post('/api/notes', { data: { title: '保留笔记' } })).json();
+  const target = await (await request.post('/api/notes', { data: { title: '删除目标' } })).json();
+  await page.goto('/notes/' + target.id);
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  await page.getByRole('textbox', { name: '笔记正文' }).fill('未保存的输入');
+  let deletions = 0;
+  page.on('request', r => { if (r.method() === 'DELETE') deletions++; });
+  page.once('dialog', async dialog => {
+    expect(dialog.message()).toContain('无法撤销');
+    expect(dialog.message()).toContain('未保存的草稿');
+    await dialog.dismiss();
+  });
+  await page.getByRole('button', { name: '删除笔记', exact: true }).click();
+  expect(deletions).toBe(0);
+  await expect(page.getByRole('textbox', { name: '笔记正文' })).toHaveValue('未保存的输入');
+  expect((await request.get('/api/notes/' + target.id)).status()).toBe(200);
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const waiting = new Promise<void>(resolve => { entered = resolve; });
+  await page.route('**/api/notes/' + target.id, async route => {
+    if (route.request().method() === 'DELETE') { entered(); await gate; }
+    await route.continue();
+  });
+  const response = page.waitForResponse(r => r.request().method() === 'DELETE');
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: '删除笔记', exact: true }).click();
+  await waiting;
+  await expect(page.getByRole('button', { name: '删除中', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+  await expect(page.getByRole('textbox', { name: '笔记正文' })).toBeDisabled();
+  release();
+  const deleted = await response;
+  expect(deleted.status()).toBe(204);
+  // Chrome不保证为204提供可读取的body；空响应已由独立真实HTTP检查验证。
+  expect(deletions).toBe(1);
+  await expect(page).toHaveURL(new RegExp('/notes/' + keep.id + '$'));
+  await expect(page.getByRole('navigation', { name: '笔记本与文档' }).getByRole('link', { name: '删除目标', exact: true })).toHaveCount(0);
+  await expect(page.getByText('1 篇笔记', { exact: true })).toBeVisible();
+  await backend.restart(); await page.reload();
+  await expect(page.getByRole('heading', { name: '保留笔记', exact: true })).toBeVisible();
+  expect((await request.get('/api/notes/' + target.id)).status()).toBe(404);
+  await page.goto('/search?q=删除目标');
+  await expect(page.getByText('找到 0 篇笔记', { exact: true })).toBeVisible();
+  await expect(page.getByRole('main').getByRole('link', { name: /删除目标/ })).toHaveCount(0);
+});
+
+test('删除最后一篇回到空入口，文档导航不会再打开已删除编号', async ({ page, request }) => {
+  const note = await (await request.post('/api/notes', { data: { title: '最后一篇' } })).json();
+  await page.goto('/notes/' + note.id);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: '删除笔记', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '从第一篇笔记开始' })).toBeVisible();
+  await expect(page.getByText('0 篇笔记', { exact: true })).toBeVisible();
+  await page.getByRole('navigation', { name: '功能模块' }).getByRole('link', { name: '搜索', exact: true }).click();
+  await page.getByRole('navigation', { name: '功能模块' }).getByRole('link', { name: '文档', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '从第一篇笔记开始' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '从第一篇笔记开始' })).toBeVisible();
+});
+
+test('删除时服务中断保留笔记和草稿，恢复后可重试', async ({ page, request, backend }) => {
+  const note = await (await request.post('/api/notes', { data: { title: '断线笔记' } })).json();
+  await page.goto('/notes/' + note.id);
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  await page.getByRole('textbox', { name: '笔记正文' }).fill('删除失败也要留住');
+  await backend.stop();
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: '删除笔记', exact: true }).click();
+  await expect(page.getByText(/笔记服务.*响应|无法连接笔记服务/).first()).toBeVisible();
+  await expect(page.getByRole('textbox', { name: '笔记正文' })).toHaveValue('删除失败也要留住');
+  await expect(page.getByRole('navigation', { name: '笔记本与文档' }).getByRole('link', { name: '断线笔记', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '删除笔记', exact: true })).toBeEnabled();
+  await backend.restart();
+  expect((await request.get('/api/notes/' + note.id)).status()).toBe(200);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: '删除笔记', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '从第一篇笔记开始' })).toBeVisible();
+});
+
+test('笔记已在其他页面删除时显示404，当前草稿保留', async ({ page, request }) => {
+  const note = await (await request.post('/api/notes', { data: { title: '已删除笔记' } })).json();
+  await page.goto('/notes/' + note.id);
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  await page.getByRole('textbox', { name: '笔记正文' }).fill('仍可复制的草稿');
+  expect((await request.delete('/api/notes/' + note.id)).status()).toBe(204);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: '删除笔记', exact: true }).click();
+  await expect(page.getByText('笔记不存在', { exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: '笔记正文' })).toHaveValue('仍可复制的草稿');
+  await expect(page.getByRole('button', { name: '删除笔记', exact: true })).toBeEnabled();
+});
 ````
 
 ## tests/desktop.spec.ts
 
 ````typescript
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
-test.beforeEach(async ({ page }) => {
-  await page.goto('/notes/welcome');
-  await expect(page.getByRole('heading', { name: '把知识连接起来', level: 1 })).toBeVisible();
+test('空数据库显示入口，新建返回201完整笔记并进入真实文件树', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: '从第一篇笔记开始' })).toBeVisible();
+  const response = page.waitForResponse(r => r.url().endsWith('/api/notes') && r.request().method() === 'POST');
+  await page.getByRole('button', { name: '创建第一篇笔记' }).click();
+  const created = await response;
+  expect(created.status()).toBe(201);
+  const note = await created.json();
+  expect(Object.keys(note).sort()).toEqual(['id', 'title', 'content', 'tags', 'notebook', 'updatedAt'].sort());
+  await expect(page).toHaveURL(new RegExp('/notes/' + note.id + '$'));
+  await expect(page.getByRole('heading', { name: '未命名笔记', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '笔记本与文档' }).getByRole('link', { name: '未命名笔记' })).toBeVisible();
+  expect((await (await page.request.get('/api/notes')).json()).length).toBe(1);
 });
 
-test('共用布局不刷新，反链、前进后退与刷新直达', async ({ page }) => {
-  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
-  await page.evaluate(() => { Object.assign(window, { testMarker: 42, testHeader: document.querySelector('header') }); });
-  await page.getByRole('complementary', { name: '反链面板' }).getByRole('link', { name: /原子笔记的方法/ }).click();
-  await expect(page.getByRole('heading', { name: '原子笔记的方法', level: 1 })).toBeVisible();
-  expect(await page.evaluate(() => { const marked = window as Window & { testMarker?: number; testHeader?: Element }; return marked.testMarker === 42 && marked.testHeader === document.querySelector('header'); })).toBe(true);
-  await page.goBack(); await expect(page.getByRole('heading', { name: '把知识连接起来', level: 1 })).toBeVisible();
-  await page.goForward(); await page.reload();
-  await expect(page.getByRole('heading', { name: '原子笔记的方法', level: 1 })).toBeVisible();
-  expect(errors).toEqual([]);
-});
-
-test('递归文件夹折叠、高亮与左右面板空间释放', async ({ page }) => {
-  const tree = page.getByRole('navigation', { name: '笔记本与文档' });
-  await tree.getByRole('button', { name: '开始于此' }).click();
-  await expect(tree.getByRole('link', { name: '原子笔记的方法', exact: true })).toBeHidden();
-  await tree.getByRole('button', { name: '开始于此' }).click();
-  await tree.getByRole('link', { name: '原子笔记的方法', exact: true }).click();
-  await expect(tree.getByRole('link', { name: '原子笔记的方法', exact: true })).toHaveAttribute('aria-current', 'page');
-  const before = await page.locator('main').evaluate(element => element.clientWidth);
-  await page.getByRole('button', { name: '隐藏文件树' }).click();
-  await page.getByRole('button', { name: '隐藏反链面板' }).click();
-  expect(await page.locator('main').evaluate(element => element.clientWidth)).toBeGreaterThan(before + 400);
-  await page.getByRole('button', { name: '显示文件树' }).click();
-  await page.getByRole('button', { name: '显示反链面板' }).click();
-  await expect(tree).toBeVisible();
-});
-
-test('草稿跨文档保留，显式 mock 保存，刷新恢复，HTML 按文本显示', async ({ page }) => {
+test('真实笔记切换保留布局、草稿及历史导航，文件夹可折叠', async ({ page, request }) => {
+  const a = await (await request.post('/api/notes', { data: { title: '第一篇' } })).json();
+  const b = await (await request.post('/api/notes', { data: { title: '第二篇' } })).json();
+  await page.goto('/notes/' + a.id);
+  await expect(page.getByRole('heading', { name: '第一篇', exact: true })).toBeVisible();
+  await page.evaluate(() => { Object.assign(window, { testHeader: document.querySelector('header') }); });
   await page.getByRole('button', { name: '编辑', exact: true }).click();
-  await page.getByRole('textbox', { name: '笔记标题' }).fill('测试保存标题');
-  await page.getByRole('textbox', { name: '笔记正文' }).fill('## 新的想法\n\n<script>alert("unsafe")</script>\n\n一条测试草稿。');
+  await page.getByRole('textbox', { name: '笔记标题' }).fill('未保存草稿');
   const tree = page.getByRole('navigation', { name: '笔记本与文档' });
-  await tree.getByRole('link', { name: '本周学习回顾', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '本周学习回顾', level: 1 })).toBeVisible();
-  await tree.getByRole('link', { name: '把知识连接起来', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '测试保存标题', level: 1 })).toBeVisible();
+  await tree.getByRole('link', { name: '第二篇', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '第二篇', exact: true })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: '未保存草稿', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as Window & { testHeader?: Element }).testHeader === document.querySelector('header'))).toBe(true);
+  await page.goForward(); await expect(page).toHaveURL(new RegExp(b.id + '$'));
+  await tree.getByRole('button', { name: '收件箱', exact: true }).click();
+  await expect(tree.getByRole('link', { name: '第一篇', exact: true })).toBeHidden();
+  await tree.getByRole('button', { name: '收件箱', exact: true }).click();
+  await expect(tree.getByRole('link', { name: '第二篇', exact: true })).toHaveAttribute('aria-current', 'page');
+});
+
+test('真实保存后刷新和后端进程重启仍保留，HTML安全显示', async ({ page, backend }) => {
+  await page.goto('/'); await page.getByRole('button', { name: '创建第一篇笔记' }).click();
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  await page.getByRole('textbox', { name: '笔记标题' }).fill('  持久化验收  ');
+  await page.getByRole('textbox', { name: '笔记正文' }).fill('## 我的正文\n\n<script>alert("unsafe")</script>');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByText('已保存到本机数据库', { exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '笔记本与文档' }).getByRole('link', { name: '持久化验收', exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '持久化验收', exact: true })).toBeVisible();
   await expect(page.getByText('<script>alert("unsafe")</script>', { exact: true })).toBeVisible();
   expect(await page.locator('article script').count()).toBe(0);
-  await page.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(page.getByText('已模拟保存 · 刷新后恢复示例数据')).toBeVisible();
-  await expect(tree.getByRole('link', { name: '测试保存标题', exact: true })).toBeVisible();
-  await page.reload();
-  await expect(page.getByRole('heading', { name: '把知识连接起来', level: 1 })).toBeVisible();
+  await backend.restart(); await page.reload();
+  await expect(page.getByRole('heading', { name: '持久化验收', exact: true })).toBeVisible();
+  await expect(page.getByText('<script>alert("unsafe")</script>', { exact: true })).toBeVisible();
 });
 
-test('搜索、空结果、标签筛选与文档跳转', async ({ page }) => {
-  await page.getByRole('navigation', { name: '功能模块' }).getByRole('link', { name: '搜索', exact: true }).click();
-  await page.getByRole('textbox', { name: '搜索笔记' }).fill('Python');
-  await expect(page.getByRole('link', { name: /Python 学习笔记/ }).first()).toBeVisible();
-  await page.getByRole('textbox', { name: '搜索笔记' }).fill('不存在的关键词zzzz');
+test('422与服务中断保留草稿，重新连接后可保存', async ({ page, backend }) => {
+  await page.goto('/'); await page.getByRole('button', { name: '创建第一篇笔记' }).click();
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  await page.getByRole('textbox', { name: '笔记标题' }).fill('   ');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByText('标题不能为空', { exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: '笔记标题' })).toHaveValue('   ');
+  await page.getByRole('textbox', { name: '笔记标题' }).fill('恢复后的草稿');
+  await page.getByRole('textbox', { name: '笔记正文' }).fill('服务中断也要保留');
+  await backend.stop();
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByText(/笔记服务.*响应|无法连接笔记服务/).first()).toBeVisible();
+  await expect(page.getByRole('textbox', { name: '笔记正文' })).toHaveValue('服务中断也要保留');
+  await backend.restart();
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByText('已保存到本机数据库', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '恢复后的草稿', exact: true })).toBeVisible();
+});
+
+test('搜索与标签视图使用真实笔记，设置和模拟同步范围明确', async ({ page, request }) => {
+  const note = await (await request.post('/api/notes', { data: { title: 'Python实践' } })).json();
+  await request.patch('/api/notes/' + note.id, { data: { title: 'Python实践', content: 'sqlite持久化' } });
+  await page.goto('/search');
+  await page.getByRole('textbox', { name: '搜索笔记' }).fill('sqlite');
+  await expect(page.getByRole('main').getByRole('link', { name: /Python实践/ })).toBeVisible();
+  await page.getByRole('textbox', { name: '搜索笔记' }).fill('没有的内容zzzz');
   await expect(page.getByText('没有匹配的笔记，换一个关键词试试。')).toBeVisible();
   await page.getByRole('navigation', { name: '功能模块' }).getByRole('link', { name: '标签', exact: true }).click();
-  await page.getByRole('button', { name: /Python/ }).click();
-  await expect(page.getByText('1 篇相关笔记')).toBeVisible();
-  await page.getByRole('link', { name: /Python 学习笔记/ }).last().click();
-  await expect(page.getByRole('heading', { name: 'Python 学习笔记', level: 1 })).toBeVisible();
-});
-
-test('新建笔记、设置生效和模拟同步提示', async ({ page }) => {
-  await page.getByRole('button', { name: '新建笔记' }).click();
-  await expect(page.getByRole('heading', { name: '未命名笔记', level: 1 })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: '笔记本与文档' }).getByRole('link', { name: '未命名笔记' })).toBeVisible();
+  await expect(page.getByText('1 篇相关笔记', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '打开设置' }).click();
   await page.getByRole('combobox', { name: '正文字号' }).selectOption('20');
   await expect(page.getByText('偏好已应用 · 仅当前会话')).toBeVisible();
   await page.getByRole('checkbox', { name: '源码编辑时显示行号' }).check();
-  await expect(page.getByRole('checkbox')).toBeEnabled();
   await page.getByRole('navigation', { name: '功能模块' }).getByRole('link', { name: '文档', exact: true }).click();
   await expect(page.locator('article')).toHaveCSS('font-size', '20px');
-  await page.getByRole('button', { name: '编辑', exact: true }).click();
-  await expect(page.locator('article pre')).toBeVisible();
   await page.getByRole('button', { name: '模拟同步' }).click();
   await expect(page.getByText('模拟同步完成 · 尚未连接云端')).toBeVisible();
+  await expect(page.getByText('反链分析尚未接入，当前仅显示笔记本身。')).toBeVisible();
 });
 
-test('关系图键盘导航、未知文档和未知路由', async ({ page }) => {
-  const node = page.getByRole('button', { name: '打开原子笔记的方法', exact: true });
-  await node.focus(); await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: '原子笔记的方法', level: 1 })).toBeVisible();
+test('未知笔记404、未知页面和服务不可用均有恢复入口', async ({ page, backend }) => {
   await page.goto('/notes/missing'); await expect(page.getByRole('heading', { name: '无法打开笔记' })).toBeVisible();
-  await page.goto('/unknown-page'); await expect(page.getByRole('heading', { name: '没有找到这个页面' })).toBeVisible();
+  await page.getByRole('link', { name: '返回开始页' }).click();
+  await expect(page.getByRole('heading', { name: '从第一篇笔记开始' })).toBeVisible();
+  await page.goto('/unknown'); await expect(page.getByRole('heading', { name: '没有找到这个页面' })).toBeVisible();
+  await backend.stop(); await page.goto('/');
+  await expect(page.getByRole('heading', { name: '无法读取笔记' })).toBeVisible();
+  await backend.restart();
+  await page.getByRole('main').getByRole('button', { name: '重新连接' }).click();
+  await expect(page.getByRole('heading', { name: '从第一篇笔记开始' })).toBeVisible();
 });
 
-test('窄屏侧栏浮层与无横向溢出', async ({ page }) => {
+test('390px窄屏无横向溢出，侧栏可打开，正文可编辑', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.reload();
-  await expect(page.getByRole('heading', { name: '把知识连接起来', level: 1 })).toBeVisible();
-  await expect(page.getByRole('button', { name: '显示文件树' })).toBeVisible();
+  await page.goto('/'); await page.getByRole('button', { name: '创建第一篇笔记' }).click();
+  await expect(page.getByRole('heading', { name: '未命名笔记', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole('button', { name: '显示文件树' }).click();
   await expect(page.getByRole('navigation', { name: '笔记本与文档' })).toBeVisible();
@@ -2500,7 +2675,184 @@ test('窄屏侧栏浮层与无横向溢出', async ({ page }) => {
   await expect(page.getByRole('complementary', { name: '反链面板' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+````
 
+## tests/fixtures.ts
+
+````typescript
+import { test as base, expect } from '@playwright/test';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { access, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { resolve, join } from 'node:path';
+
+type Backend = { restart: () => Promise<void>; stop: () => Promise<void> };
+export const test = base.extend<{ backend: Backend }>({
+  backend: [async ({}, use) => {
+    const directory = await mkdtemp(join(tmpdir(), 'rock-notes-e2e-'));
+    let child: ChildProcess | undefined;
+    let logs = '';
+    async function stop() {
+      if (!child || child.exitCode !== null || child.signalCode !== null) return;
+      const current = child;
+      await new Promise<void>(done => {
+        const timer = setTimeout(() => current.kill('SIGKILL'), 5000);
+        current.once('close', () => { clearTimeout(timer); done(); });
+        current.kill('SIGTERM');
+      });
+      child = undefined;
+    }
+    async function start() {
+      await rm(join(directory, 'backend-ready'), { force: true });
+      logs = '';
+      child = spawn(resolve('../.venv/bin/python'), ['-B', 'tests/run-backend.py'], {
+        env: { ...process.env, ROCK_E2E_DATA_DIR: directory }, stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      child.stderr?.on('data', value => { logs += value.toString(); });
+      child.on('error', error => { logs += error.message; });
+      const deadline = Date.now() + 10000;
+      while (Date.now() < deadline) {
+        if (child.exitCode !== null || child.signalCode !== null) throw new Error('临时后端退出：' + logs);
+        try {
+          await access(join(directory, 'backend-ready'));
+          if ((await fetch('http://127.0.0.1:18000/health')).ok) return;
+        } catch {}
+        await new Promise(done => setTimeout(done, 50));
+      }
+      throw new Error('临时后端未启动：' + logs);
+    }
+    try {
+      await start();
+      await use({ stop, restart: async () => { await stop(); await start(); } });
+    } finally { await stop(); await rm(directory, { recursive: true, force: true }); }
+  }, { auto: true }],
+});
+export { expect };
+````
+
+## tests/ime.spec.ts
+
+````typescript
+import { test, expect } from './fixtures';
+import type { Page, Locator } from '@playwright/test';
+
+// 使用浏览器原生组合输入协议；不是 fill 或直接粘贴中文。
+async function compose(page: Page, input: Locator, text: string, duringComposition?: () => Promise<void>) {
+  await input.focus();
+  const client = await page.context().newCDPSession(page);
+  await input.evaluate(element => {
+    const events: string[] = [];
+    Object.assign(element, { imeEvents: events });
+    for (const type of ['compositionstart', 'compositionupdate', 'compositionend']) {
+      element.addEventListener(type, () => events.push(type));
+    }
+  });
+  for (const part of ['n', 'ni', 'nihao']) {
+    await client.send('Input.imeSetComposition', { text: part, selectionStart: part.length, selectionEnd: part.length });
+    await expect(input).toHaveValue(part);
+    if (duringComposition) await duringComposition();
+  }
+  await client.send('Input.insertText', { text });
+  await expect(input).toHaveValue(text);
+  const events = await input.evaluate(element => (element as HTMLElement & { imeEvents: string[] }).imeEvents);
+  expect(events).toContain('compositionstart');
+  expect(events).toContain('compositionend');
+  await client.detach();
+}
+
+test('中文组合输入：标题与正文完成选词后可保存并刷新', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '创建第一篇笔记' }).click();
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  const title = page.getByRole('textbox', { name: '笔记标题' });
+  await title.fill('');
+  await compose(page, title, '你好');
+  await compose(page, page.getByRole('textbox', { name: '笔记正文' }), '你好');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByText('已保存到本机数据库', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '你好', exact: true })).toBeVisible();
+  await expect(page.locator('article p').filter({ hasText: /^你好$/ })).toBeVisible();
+});
+
+test('中文组合输入：搜索选词后正确显示中文查询', async ({ page, request }) => {
+  await request.post('/api/notes', { data: { title: '你好' } });
+  await page.goto('/search');
+  await compose(page, page.getByRole('textbox', { name: '搜索笔记' }), '你好', async () => {
+    await expect(page).toHaveURL(/\/search$/);
+  });
+  await expect(page).toHaveURL(/q=%E4%BD%A0%E5%A5%BD/);
+  await expect(page.getByRole('main').getByRole('link', { name: /你好/ })).toBeVisible();
+});
+````
+
+## tests/run-backend.py
+
+````python
+"""仅供端到端测试：所有数据库操作隔离到临时目录，不改后端源码。"""
+import os
+import sys
+import socket
+import tempfile
+from pathlib import Path
+
+root = Path(__file__).resolve().parents[2]
+data = Path(os.environ['ROCK_E2E_DATA_DIR']).resolve()
+if not data.is_relative_to(Path(tempfile.gettempdir()).resolve()) or not data.name.startswith('rock-notes-e2e-'):
+    raise RuntimeError('端到端数据库必须位于专用临时目录')
+os.chdir(data)
+sys.path.insert(0, str(root))
+sys.dont_write_bytecode = True
+import notes_database
+notes_database.DB_PATH = data / 'learning.db'
+# 旧database模块使用相对路径；此时工作目录也已切到临时目录。
+import main
+import uvicorn
+# 先独占测试端口，再写就绪标记；端口被占用时不会误用其他服务。
+listener = socket.socket()
+listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+listener.bind(('127.0.0.1', 18000))
+(data / 'backend-ready').write_text(str(os.getpid()))
+server = uvicorn.Server(uvicorn.Config(main.app, log_level='critical', access_log=False))
+server.run(sockets=[listener])
+````
+
+## tests/search.spec.ts
+
+````typescript
+import { test, expect } from './fixtures';
+
+test('按输入顺序匹配：忽略查询空白、允许隔字，不能倒序或只命中部分字符', async ({ page, request }) => {
+  for (const note of [
+    { title: '笔记甲', content: '今天好开心 aaa' },
+    { title: '笔记乙', content: 'aaa，今天好开心' },
+    { title: '笔记丙', content: '今天好开心' },
+  ]) {
+    const created = await request.post('/api/notes', { data: { title: note.title } });
+    expect(created.status()).toBe(201);
+    const { id } = await created.json();
+    expect((await request.patch('/api/notes/' + id, { data: note })).status()).toBe(200);
+  }
+  await page.goto('/search');
+  const search = page.getByRole('textbox', { name: '搜索笔记' });
+  const results = page.getByRole('main');
+  await search.fill('今天 a');
+  await expect(page.getByText('找到 1 篇笔记', { exact: true })).toBeVisible();
+  await expect(results.getByRole('heading', { name: '笔记甲', exact: true })).toBeVisible();
+  await expect(results.getByRole('heading', { name: '笔记乙', exact: true })).toHaveCount(0);
+  await search.fill('a 今天');
+  await expect(page.getByText('找到 1 篇笔记', { exact: true })).toBeVisible();
+  await expect(results.getByRole('heading', { name: '笔记乙', exact: true })).toBeVisible();
+  await search.fill(' 　今   开 A  ');
+  await expect(page.getByText('找到 1 篇笔记', { exact: true })).toBeVisible();
+  await expect(results.getByRole('heading', { name: '笔记甲', exact: true })).toBeVisible();
+  for (const query of ['天今 a', '今天 z', '今天 aaaa']) {
+    await search.fill(query);
+    await expect(page.getByText('没有匹配的笔记，换一个关键词试试。')).toBeVisible();
+  }
+  await search.fill(' 　');
+  await expect(page.getByText('找到 3 篇笔记', { exact: true })).toBeVisible();
+});
 ````
 
 ## tsconfig.json
@@ -2524,16 +2876,23 @@ test('窄屏侧栏浮层与无横向溢出', async ({ page }) => {
   },
   "include": ["src", "vite.config.ts"]
 }
-
 ````
 
 ## vite.config.ts
 
 ````typescript
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Vite 仅负责前端开发和构建；这里没有 API 服务或数据库代理。
-export default defineConfig({ plugins: [react()], server: { host: '127.0.0.1', port: 5173, strictPort: true } });
-
+// 开发时把同源 /api 请求转发给 FastAPI；生产部署需另外配置反向代理。
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, '.', 'ROCK_');
+  return {
+    plugins: [react()],
+    server: {
+      host: '127.0.0.1', port: 5173, strictPort: true,
+      proxy: { '/api': { target: env.ROCK_API_TARGET || 'http://127.0.0.1:8000' } },
+    },
+  };
+});
 ````
